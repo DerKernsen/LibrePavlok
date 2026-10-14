@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.librepavlok.offline.tests">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+    <application android:label="LibrePavlok device tests" />
+    <instrumentation android:name="org.librepavlok.offline.tests.AlarmDeviceTest" android:targetPackage="org.librepavlok.offline" />
+    <instrumentation android:name="org.librepavlok.offline.tests.UiSmokeTest" android:targetPackage="org.librepavlok.offline" />
+</manifest>
