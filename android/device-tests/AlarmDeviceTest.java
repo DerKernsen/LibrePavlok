@@ -28,6 +28,7 @@ public final class AlarmDeviceTest extends Instrumentation {
         try {
             Intent intent=new Intent().setClassName("org.librepavlok.offline", "org.librepavlok.offline.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activity=startActivitySync(intent);
+            if(value("ble")==null)throw new IllegalStateException("Open the app and acknowledge the first-launch notice before a hardware test");
             if(expectedSerial.isEmpty()) throw new IllegalArgumentException("Wearable serial is required");
             if(address.isEmpty()) {
                 click("Find device");

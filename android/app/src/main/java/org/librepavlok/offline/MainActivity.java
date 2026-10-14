@@ -35,6 +35,8 @@ public final class MainActivity extends Activity implements BleController.Listen
     private CheckBox playConsent;
     private Spinner alarmKind, repeat, playMode, playDelay;
     private Button connectionAction, shockButton, playStart, playCancel, stickyAlarmSave;
+    private CheckBox disclaimerAcknowledgement;
+    private Button disclaimerContinue;
     private ScrollView scroll;
     private SharedPreferences preferences;
     private final ArrayList<View> editorControls=new ArrayList<>(), emergencyControls=new ArrayList<>();
@@ -85,8 +87,11 @@ public final class MainActivity extends Activity implements BleController.Listen
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         preferences=getSharedPreferences("companion",MODE_PRIVATE);
-        hour=preferences.getInt("draftHour",7); minute=preferences.getInt("draftMinute",0);
-        ble=new BleController(this,this);
+        if(preferences.getInt("disclaimerVersion",0)<AppDisclaimer.VERSION)showDisclaimer();
+        else buildCompanion();
+    }
+
+    private LinearLayout screenRoot() {
         getWindow().setStatusBarColor(AppUi.BG); getWindow().setNavigationBarColor(AppUi.BG);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                 |(Build.VERSION.SDK_INT>=26?View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:0));
@@ -101,6 +106,44 @@ public final class MainActivity extends Activity implements BleController.Listen
             });
         }
         setContentView(root);
+        return root;
+    }
+
+    private void showDisclaimer() {
+        LinearLayout root=screenRoot();
+        LinearLayout header=AppUi.column(this); header.setPadding(dp(24),dp(18),dp(24),dp(14));
+        root.addView(header,new LinearLayout.LayoutParams(-1,-2));
+        header.addView(new AppUi.Icon(this,"bolt",GREEN,30));
+        text(header,"Before you start",30,INK,true);
+        text(header,"LibrePavlok · Liability notice",14,MUTED,false);
+        ScrollView reading=new ScrollView(this); reading.setFillViewport(true);
+        root.addView(reading,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout content=AppUi.column(this); content.setPadding(dp(24),0,dp(24),dp(20)); reading.addView(content);
+        LinearLayout notice=AppUi.card(content,AppUi.WHITE);
+        text(notice,"Use at your own risk",20,INK,true);
+        text(notice,AppDisclaimer.TEXT,14,INK,false);
+        LinearLayout actions=AppUi.column(this); actions.setPadding(dp(24),dp(8),dp(24),dp(6));
+        root.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+        disclaimerAcknowledgement=check(actions,"I have read and acknowledge this notice.");
+        disclaimerAcknowledgement.setTag("disclaimer:acknowledgement");
+        disclaimerContinue=button(actions,"Continue",AppUi.GREEN,AppUi.WHITE,v -> {
+            if(!disclaimerAcknowledgement.isChecked())return;
+            if(!preferences.edit().putInt("disclaimerVersion",AppDisclaimer.VERSION).commit()) {
+                Toast.makeText(this,"Could not save acknowledgement. Please try again.",Toast.LENGTH_LONG).show(); return;
+            }
+            buildCompanion();
+        });
+        disclaimerContinue.setTag("disclaimer:continue"); disclaimerContinue.setEnabled(false); disclaimerContinue.setAlpha(0.65f);
+        disclaimerAcknowledgement.setOnCheckedChangeListener((b,checked) -> {
+            disclaimerContinue.setEnabled(checked); disclaimerContinue.setAlpha(checked?1f:0.65f);
+        });
+        Button exit=button(actions,"Exit",v -> finishAndRemoveTask()); exit.setTag("disclaimer:exit");
+    }
+
+    private void buildCompanion() {
+        hour=preferences.getInt("draftHour",7); minute=preferences.getInt("draftMinute",0);
+        ble=new BleController(this,this);
+        LinearLayout root=screenRoot();
 
         LinearLayout brand=row(root); brand.setPadding(dp(22),0,dp(22),dp(12));
         brand.addView(new AppUi.Icon(this,"bolt",GREEN,27));
@@ -271,6 +314,8 @@ public final class MainActivity extends Activity implements BleController.Listen
         text(help,"Connection tools",18,INK,true);
         text(help,"Wake it, bring it close, and try again. Android may also ask for Nearby devices or Location access to scan.",13,MUTED,false);
         button(help,"Refresh device info",v -> { if(isAlarmBusy())notice("Let the alarm finish saving first."); else ble.readInfo(); });
+        button(help,"Liability notice",v -> new AlertDialog.Builder(this).setTitle("Liability notice")
+                .setMessage(AppDisclaimer.TEXT).setPositiveButton("Close",null).show());
         sessionButton(help,"Read wearable alarm status",v -> { ble.enableRtcNotifications(); writeRtc(LegacyProtocol.readAlarmStatus(),"Query alarm state"); writeRtc(LegacyProtocol.readAlarmInventory(),"Query stored alarm count"); });
         LinearLayout report=card(diagnosisPanel); text(report,"For the curious",18,INK,true);
         text(report,"If something acts weird, save a local report. It stays yours until you share it.",13,MUTED,false);
@@ -520,7 +565,7 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private void notice(String message) { new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show(); }
     private void exportReport() {
-        exportText="LibrePavlok 0.2.0 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
+        exportText="LibrePavlok 0.2.1 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
         Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT); i.setType("text/plain"); i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_TITLE,"librepavlok-report.txt"); startActivityForResult(i,102);
     }
     @Override protected void onActivityResult(int r,int result,Intent data) {

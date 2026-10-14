@@ -2,7 +2,13 @@
 
 An offline Android companion for the original Shock Clock / Pavlok-1 Bluetooth profile. Direct wearable controls, verified onboard alarm saving, and a cancellable Play countdown. No account, cloud, subscription, or Internet permission.
 
-**[Download version 0.2.0](https://github.com/DerKernsen/LibrePavlok/releases/latest)** · [Changelog](CHANGELOG.md) · [Build and test](docs/development.md) · [Alarm protocol](docs/protocol.md)
+**[Download version 0.2.1](https://github.com/DerKernsen/LibrePavlok/releases/latest)** · [Changelog](CHANGELOG.md) · [Build and test](docs/development.md) · [Alarm protocol](docs/protocol.md)
+
+## Liability notice
+
+**Use at your own risk.** LibrePavlok is experimental software, provided AS IS without warranties. To the maximum extent permitted by applicable law, the author and contributors disclaim liability for injuries, device or property damage, missed alarms, and any other damage or loss arising from its use. Liability that cannot legally be excluded remains unaffected. See [the full disclaimer](DISCLAIMER.md).
+
+On first launch, including the first launch after installing this notice update, users must acknowledge the notice before the app initializes Bluetooth or exposes its controls. Acknowledgement is saved locally. The notice remains available under **Device → Liability notice**.
 
 <p>
   <img src="docs/screenshots/remote.png" width="220" alt="Remote: vibration, beep and shock controls" />
@@ -25,7 +31,7 @@ The connection and battery status stay above the content; navigation stays at th
 
 ## Install and connect
 
-1. Download `LibrePavlok-debug.apk` from [Releases](https://github.com/DerKernsen/LibrePavlok/releases/latest) or [dist](dist/LibrePavlok-debug.apk). Install on Android 6 or newer.
+1. Download `LibrePavlok-debug.apk` from [Releases](https://github.com/DerKernsen/LibrePavlok/releases/latest) or [dist](dist/LibrePavlok-debug.apk). Install on Android 6 or newer and acknowledge the first-launch notice to continue.
 2. Wake the wearable and disconnect it from another app if necessary.
 3. Tap **Connect**, then choose the device. Grant the Android Bluetooth permissions. Android 6–11 also needs Location permission and the system Location toggle for BLE scanning; LibrePavlok does not request location data.
 4. LibrePavlok reads the device information and starts the matching local session. Use **Device** to inspect firmware or reconnect the last wearable.
@@ -56,7 +62,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps
 
 Use `-Sdk` and `-Jdk` to specify other tool locations. An Android Studio Gradle project is also included under `android/`. Full build, instrumentation and architecture instructions are in [docs/development.md](docs/development.md).
 
-Release validation: **213 protocol checks, 21 countdown checks, 12 emulator UI checks**, signed APK verification, and screen inspection on the Mi 9T. UI QA dispatches no wearable commands. The alarm transaction is the previously hardware-verified 0.1.5 implementation; 0.2.0 changes its interface and independent strength selection.
+Release validation: **213 protocol checks, 21 countdown checks, 22 emulator UI checks**, signed APK verification, and screen inspection on the Mi 9T. UI QA dispatches no wearable commands. The alarm transaction is the previously hardware-verified 0.1.5 implementation; 0.2.0 introduced the interface and independent strengths, and 0.2.1 adds first-launch acknowledgement.
 
 ## Research and contributing
 

@@ -26,9 +26,33 @@ public final class UiSmokeTest extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
-            if(smoke)getTargetContext().getSharedPreferences("companion",0).edit().putInt("draftHour",7).putInt("draftMinute",0).putInt("draftRepeat",0).putInt("draftKind",1).putInt("draftLevel",6).putInt("remoteLevel",0).putInt("playLevel",0).commit();
+            if(smoke)getTargetContext().getSharedPreferences("companion",0).edit().putInt("draftHour",7).putInt("draftMinute",0).putInt("draftRepeat",0).putInt("draftKind",1).putInt("draftLevel",6).putInt("remoteLevel",0).putInt("playLevel",0).remove("disclaimerVersion").commit();
             activity=startActivitySync(new Intent().setClassName("org.librepavlok.offline","org.librepavlok.offline.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync(); Thread.sleep(250);
+            if(value("ble")==null) {
+                screenshot("disclaimer");
+                if(!smoke) {
+                    result.putString("screen","First-launch notice; acknowledgement unchanged"); finish(0,result); return;
+                }
+                onUi(() -> {
+                    check(value("ble")==null,"No Bluetooth controller before acknowledgement");
+                    check(find(activity.getWindow().getDecorView(),"nav:Remote")==null,"No app controls before acknowledgement");
+                    check(!((Button)value("disclaimerContinue")).isEnabled(),"Continue requires acknowledgement");
+                    View exit=find(activity.getWindow().getDecorView(),"disclaimer:exit");
+                    check(exit!=null,"Exit available"); exit.performClick();
+                }); waitForIdleSync();
+                check(getTargetContext().getSharedPreferences("companion",0).getInt("disclaimerVersion",0)==0,"Exit does not acknowledge notice");
+                activity=startActivitySync(new Intent().setClassName("org.librepavlok.offline","org.librepavlok.offline.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                waitForIdleSync();
+                onUi(() -> {
+                    check(value("ble")==null,"Notice repeats after exit without acknowledgement");
+                    ((CheckBox)value("disclaimerAcknowledgement")).setChecked(true);
+                    check(((Button)value("disclaimerContinue")).isEnabled(),"Acknowledgement enables Continue");
+                    ((Button)value("disclaimerContinue")).performClick();
+                    check(value("ble")!=null&&find(activity.getWindow().getDecorView(),"nav:Remote")!=null,"Controls initialize after acknowledgement");
+                }); waitForIdleSync();
+                check(getTargetContext().getSharedPreferences("companion",0).getInt("disclaimerVersion",0)==1,"Notice version persisted");
+            }
             screenshot("remote");
             nav("Alarm"); screenshot("alarm");
             nav("Play"); screenshot("play");
@@ -65,6 +89,7 @@ public final class UiSmokeTest extends Instrumentation {
                 onUi(() -> activity.finish()); waitForIdleSync();
                 activity=startActivitySync(new Intent().setClassName("org.librepavlok.offline","org.librepavlok.offline.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 onUi(() -> {
+                    check(value("ble")!=null&&find(activity.getWindow().getDecorView(),"nav:Remote")!=null,"Acknowledged notice skipped on restart");
                     check((Integer)value("hour")==9&&(Integer)value("minute")==25,"Draft time restored");
                     check(((SeekBar)value("alarmLevel")).getProgress()==3,"Alarm strength restored");
                     check(((SeekBar)value("level")).getProgress()==9,"Remote strength restored");

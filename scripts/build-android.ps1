@@ -14,7 +14,7 @@ foreach ($required in @($platform, "$buildTools\aapt.exe", "$buildTools\d8.bat",
 $env:JAVA_HOME = $Jdk
 New-Item -ItemType Directory -Force $build, "$build\classes", "$build\dex", "$project\dist" | Out-Null
 function Check-Exit([string]$Step) { if ($LASTEXITCODE -ne 0) { throw "$Step failed: $LASTEXITCODE" } }
-& "$buildTools\aapt.exe" package -f -M "$source\AndroidManifest.xml" -S "$source\res" -I $platform -F "$build\resources.apk" --version-code 7 --version-name 0.2.0
+& "$buildTools\aapt.exe" package -f -M "$source\AndroidManifest.xml" -S "$source\res" -I $platform -F "$build\resources.apk" --version-code 8 --version-name 0.2.1
 Check-Exit 'Resource packaging'
 $javaSources = @(Get-ChildItem "$source\java" -Recurse -Filter '*.java' | ForEach-Object FullName)
 & "$Jdk\bin\javac.exe" -encoding UTF-8 --release 8 -classpath $platform -d "$build\classes" @javaSources

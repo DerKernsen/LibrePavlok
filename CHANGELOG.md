@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-10-14
+
+- Added a first-launch liability notice with explicit acknowledgement or exit before Bluetooth or controls initialize.
+- Saved acknowledgement locally and made the notice available from Device.
+- Added a repository disclaimer covering warranties, injury, damage and loss to the maximum extent permitted by law, while preserving mandatory legal rights.
+- Cleaned up unrelated documentation.
+
 ## 0.2.0 — 2026-10-14
 
 - Replaced the long utility screen with Remote, Alarm, Play and Device tabs, shared connection status, native outline icons and a warm green/ivory palette.

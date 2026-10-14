@@ -23,6 +23,7 @@ Output: `dist/LibrePavlok-debug.apk`. The builder creates `android/build/standal
 | `BleController.java` | Scan/connect, characteristic discovery, device information and serialized GATT queue. |
 | `PlayCountdown.java` | Single-use countdown, strength preservation, cancellation and current-state checks. No Bluetooth calls. |
 | `MainActivity.java` | Screens, preferences, session lifecycle, command dispatch and verified alarm transaction. |
+| `AppDisclaimer.java` | Offline notice text and acknowledgement version. MainActivity gates initialization until acknowledgement. |
 | `AppUi.java` | Palette, cards, buttons, typography and Canvas icons. |
 
 All three strength preferences persist independently. Saving captures the alarm settings, then stores the verified summary only after the wearable reports armed. Competing commands are disabled during saving. Failure or interruption cancels queued work and delayed activation. Actuator commands are never automatically retried after reconnecting.
@@ -55,7 +56,7 @@ adb -s emulator-5554 install -r android/build/device-tests/device-tests.apk
 adb -s emulator-5554 shell am instrument -w -e mode smoke org.librepavlok.offline.tests/org.librepavlok.offline.tests.UiSmokeTest
 ```
 
-`mode smoke` resets the target's draft preferences, simulates UI readiness without connecting the GATT controller, and runs 12 assertions. It checks independent strengths, a 100% shock countdown, cancellation before dispatch, disconnected controls and preference restoration. Use this mode on an emulator. Omitting `-e mode smoke` only visits/screenshots the tabs and preserves phone preferences. Both modes send no wearable commands.
+`mode smoke` resets the target's draft preferences and notice acknowledgement, and simulates UI readiness without connecting the GATT controller. It checks that Bluetooth and controls stay uninitialized until acknowledgement, Exit does not acknowledge, acknowledgement persists across relaunch, and the existing independent-strength/countdown behavior works. Use this mode on an emulator. Omitting `-e mode smoke` preserves phone preferences and screenshots the notice when it is pending, or the four tabs otherwise. Both modes send no wearable commands.
 
 Screenshots: `/sdcard/Android/data/org.librepavlok.offline/files/ui-remote.png` and the corresponding `alarm`, `play`, and `device` names. Remove the test package afterward:
 
@@ -63,9 +64,19 @@ Screenshots: `/sdcard/Android/data/org.librepavlok.offline/files/ui-remote.png` 
 adb uninstall org.librepavlok.offline.tests
 ```
 
+Version 0.2.1 also writes `ui-disclaimer.png` when the first-launch notice is pending. The UI suite runs 22 checks, including ten checks for the acknowledgement lifecycle. The phone screenshot mode never acknowledges a pending notice on the user's behalf.
+
+## 0.2.1 validation
+
+- 213 protocol, 21 countdown and 22 UI checks passed.
+- Exit leaves the notice unacknowledged; a subsequent launch shows it again.
+- No Bluetooth controller or normal controls initialize before explicit acknowledgement.
+- Acknowledgement persists and skips the notice on relaunch. Full-strength countdown cancellation and independent preferences continue to pass.
+- APK compilation/signature verification and first-launch screen inspection on emulator and Mi 9T / Android 11.
+
 ## Hardware instrumentation
 
-`AlarmDeviceTest` is a separate, explicitly invoked research helper. It requires the expected serial and firmware `2.4.99`; optional `address` selects a known wearable. Default `inspect` connects and queries state/inventory. Other actions replace alarms, run audible tests or clear them. They are separate from UI QA.
+`AlarmDeviceTest` is a separate, explicitly invoked research helper. Acknowledge the first-launch notice in the app before running it. It requires the expected serial and firmware `2.4.99`; optional `address` selects a known wearable. Default `inspect` connects and queries state/inventory. Other actions replace alarms, run audible tests or clear them. They are separate from UI QA.
 
 Example of the production Save path, setting 100% beep three minutes ahead and disconnecting:
 
