@@ -2,6 +2,6 @@ plugins { id 'com.android.application' }
 android {
     namespace 'org.librepavlok.offline'
     compileSdk 35
-    defaultConfig { applicationId 'org.librepavlok.offline'; minSdk 23; targetSdk 35; versionCode 8; versionName '0.2.1' }
+    defaultConfig { applicationId 'org.librepavlok.offline'; minSdk 23; targetSdk 35; versionCode 9; versionName '0.3.0' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
 }

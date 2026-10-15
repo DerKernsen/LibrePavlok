@@ -27,7 +27,9 @@ import java.util.*;
 /** A local-only companion; connecting reads device information and never actuates it. */
 public final class MainActivity extends Activity implements BleController.Listener {
     private static final int INK=AppUi.INK, GREEN=AppUi.GREEN, MUTED=AppUi.MUTED;
-    private LinearLayout page, devices, controlPanel, alarmPanel, playPanel, diagnosisPanel;
+    private LinearLayout page, devices, controlPanel, alarmPanel, playPanel, diagnosisPanel, todoPanel;
+    private TodoPanel todos;
+    private SharedBle sharedBle;
     private TextView status, info, logView, levelLabel, alarmTime, alarmStatus, alarmConnection;
     private TextView batteryBadge, actionStatus, quickStrength, nextAlarmText, deviceInfo, alarmLevelLabel, playLevelLabel, playStatus, playNumber;
     private SeekBar level, alarmLevel, playLevel;
@@ -142,7 +144,8 @@ public final class MainActivity extends Activity implements BleController.Listen
 
     private void buildCompanion() {
         hour=preferences.getInt("draftHour",7); minute=preferences.getInt("draftMinute",0);
-        ble=new BleController(this,this);
+        sharedBle=SharedBle.get(this); ble=sharedBle.controller;
+        sharedBle.activityBusy=() -> isAlarmBusy()||stimulusInFlight||playCountdown!=null;
         LinearLayout root=screenRoot();
 
         LinearLayout brand=row(root); brand.setPadding(dp(22),0,dp(22),dp(12));
@@ -170,8 +173,9 @@ public final class MainActivity extends Activity implements BleController.Listen
         scroll=new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         page=AppUi.column(this); page.setPadding(dp(20),dp(3),dp(20),dp(22)); scroll.addView(page);
-        controlPanel=panel(); alarmPanel=panel(); playPanel=panel(); diagnosisPanel=panel();
+        controlPanel=panel(); alarmPanel=panel(); playPanel=panel(); diagnosisPanel=panel(); todoPanel=panel();
         buildRemote(); buildAlarm(); buildPlay(); buildDevice();
+        todos=new TodoPanel(this,todoPanel,sharedBle,() -> updateControls()); todos.refresh();
         stickyAlarmSave=sessionButton(root,"Save alarm to wearable…",AppUi.GREEN,AppUi.WHITE,v -> confirmAlarm());
         LinearLayout.LayoutParams saveLayout=(LinearLayout.LayoutParams)stickyAlarmSave.getLayoutParams();
         saveLayout.setMargins(dp(20),dp(4),dp(20),dp(4));
@@ -185,7 +189,7 @@ public final class MainActivity extends Activity implements BleController.Listen
         LinearLayout nav=row(root); nav.setPadding(dp(5),dp(5),dp(5),dp(5));
         AppUi.surface(nav,AppUi.WHITE,24,true);
         LinearLayout.LayoutParams np=(LinearLayout.LayoutParams)nav.getLayoutParams(); np.setMargins(dp(16),dp(5),dp(16),0);
-        String[] titles={"Remote","Alarm","Play","Device"}, icons={"wave","alarm","play","device"};
+        String[] titles={"Remote","Alarm","Play","Device","To-dos"}, icons={"wave","alarm","play","device","todo"};
         for(int i=0;i<titles.length;i++) {
             final int tab=i; LinearLayout item=AppUi.column(this); item.setGravity(Gravity.CENTER);
             item.setPadding(0,dp(9),0,dp(7)); item.setTag("nav:"+titles[i]);
@@ -194,7 +198,9 @@ public final class MainActivity extends Activity implements BleController.Listen
             TextView label=text(item,titles[i],11,MUTED,true); label.setGravity(Gravity.CENTER);
             nav.addView(item,new LinearLayout.LayoutParams(0,-2,1)); navItems.add(item); item.setOnClickListener(v -> showTab(tab));
         }
-        updateControls(); refreshSavedSummary(); showTab(0); handler.postDelayed(batteryRefresh,12000);
+        sharedBle.attach(this); sessionRequested=sharedBle.ready; sessionReady=sharedBle.sessionReady;
+        sharedBle.replay(this);
+        updateControls(); refreshSavedSummary(); showTab(getIntent().getBooleanExtra("openTodos",false)?4:0); handler.postDelayed(batteryRefresh,12000);
     }
 
     private LinearLayout panel() { LinearLayout p=AppUi.column(this); page.addView(p,new LinearLayout.LayoutParams(-1,-2)); return p; }
@@ -323,7 +329,7 @@ public final class MainActivity extends Activity implements BleController.Listen
         button(report,"Show connection log ▾",v -> logView.setVisibility(logView.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
         logView=text(report,"Ready. Everything stays on this phone.",11,MUTED,false);
         logView.setTypeface(Typeface.MONOSPACE); logView.setTextIsSelectable(true); logView.setVisibility(View.GONE);
-        text(diagnosisPanel,"LibrePavlok 0.2.0 · Made for the original Shock Clock",11,MUTED,false);
+        text(diagnosisPanel,"LibrePavlok 0.3.0 · Made for the original Shock Clock",11,MUTED,false);
     }
     private CheckBox check(LinearLayout parent,String label) {
         CheckBox c=new CheckBox(this); c.setText(label); c.setTextColor(INK); c.setTextSize(13);
@@ -368,7 +374,8 @@ public final class MainActivity extends Activity implements BleController.Listen
         } else { showTab(3); requestScan(); }
     }
     private void connectChosen(BluetoothDevice device) {
-        if(isAlarmBusy()||stimulusInFlight){ notice("Let the current action finish first."); return; }
+        if(isAlarmBusy()||stimulusInFlight||sharedBle.todoSending){ notice("Let the current action finish first."); return; }
+        sharedBle.suspended=false;
         cancelPlay("Cancelled. The connection changed."); handler.removeCallbacks(reconnect);
         selectedDevice=device; explicitDisconnect=false; reconnectAttempts=0; sessionRequested=true;
         firmware=""; serial=""; battery="—"; hardware="—"; shockEnabled.setChecked(false);
@@ -377,6 +384,7 @@ public final class MainActivity extends Activity implements BleController.Listen
         ble.connect(device);
     }
     private void disconnectDevice() {
+        sharedBle.suspended=true;
         cancelPlay("Cancelled. The wearable disconnected."); explicitDisconnect=true; sessionRequested=false;
         handler.removeCallbacks(reconnect); ble.disconnect();
     }
@@ -421,7 +429,7 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private boolean canSend() {
         if(!ready||!sessionReady){ notice("Connect your wearable first."); return false; }
-        if(isAlarmBusy()||stimulusInFlight||playCountdown!=null){ notice("Let the current action finish first."); return false; }
+        if(isAlarmBusy()||stimulusInFlight||playCountdown!=null||sharedBle.todoSending){ notice("Let the current action finish first."); return false; }
         return true;
     }
     private static final class AlarmSnapshot {
@@ -434,7 +442,8 @@ public final class MainActivity extends Activity implements BleController.Listen
     private int playIntensity() { return (playLevel.getProgress()+1)*10; }
     private void showTab(int tab) {
         if(tab!=2)cancelPlay("Cancelled. You left Play mode."); activeTab=tab;
-        LinearLayout[] panels={controlPanel,alarmPanel,playPanel,diagnosisPanel};
+        LinearLayout[] panels={controlPanel,alarmPanel,playPanel,diagnosisPanel,todoPanel};
+        if(tab==4&&todos!=null)todos.refresh();
         for(int i=0;i<panels.length;i++)panels[i].setVisibility(i==tab?View.VISIBLE:View.GONE);
         if(stickyAlarmSave!=null)stickyAlarmSave.setVisibility(tab==1?View.VISIBLE:View.GONE);
         updatePlayActions();
@@ -452,10 +461,10 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private void updateControls() {
         updatePlayActions();
-        boolean enabled=ready&&sessionReady&&!isAlarmBusy()&&!stimulusInFlight&&playCountdown==null;
+        boolean enabled=ready&&sessionReady&&!isAlarmBusy()&&!stimulusInFlight&&playCountdown==null&&(sharedBle==null||!sharedBle.todoSending);
         for(View v:sessionControls){ v.setEnabled(enabled); v.setAlpha(enabled?1f:0.75f); }
         for(View v:editorControls)v.setEnabled(!isAlarmBusy()&&playCountdown==null);
-        for(View v:emergencyControls){ boolean usable=ready&&sessionReady&&!isAlarmBusy(); v.setEnabled(usable); v.setAlpha(usable?1f:0.5f); }
+        for(View v:emergencyControls){ boolean usable=ready&&sessionReady&&!isAlarmBusy()&&!sharedBle.todoSending; v.setEnabled(usable); v.setAlpha(usable?1f:0.5f); }
         if(level!=null)level.setEnabled(!isAlarmBusy()&&!stimulusInFlight&&playCountdown==null);
         if(shockButton!=null){ boolean unlocked=enabled&&shockEnabled.isChecked(); shockButton.setEnabled(unlocked); shockButton.setAlpha(unlocked?1f:0.7f); }
         if(playMode!=null){ playMode.setEnabled(playCountdown==null); playDelay.setEnabled(playCountdown==null); playLevel.setEnabled(playCountdown==null); }
@@ -486,10 +495,12 @@ public final class MainActivity extends Activity implements BleController.Listen
     private void startSession() {
         sessionRequested=true;
         if(!ready) { notice("Connect to your Shock Clock first."); return; }
+        if(sharedBle.sessionReady){ sessionReady=true; status.setText("Connected"); updateControls(); updateDeviceSummary(); return; }
+        if(sharedBle.monitor){ sharedBle.ensureSession(); sessionReady=sharedBle.sessionReady; updateControls(); return; }
         if(sessionReady) { notice("Local session is already ready."); return; }
         if(!LegacyProtocol.isSupportedLegacyFirmware(firmware)) { notice("This device needs the legacy A4.x.y or 2.4.x profile. Refresh device info on Device to check firmware."); return; }
         if(!LegacyProtocol.isShockClockFirmware(firmware)) {
-            sessionReady=true; status.setText("Connected"); updateControls(); updateDeviceSummary();
+            sessionReady=true; sharedBle.sessionReady=true; status.setText("Connected"); updateControls(); updateDeviceSummary();
             onLog("Legacy 2.4 firmware uses direct controls; A4-only handshake skipped. No activation or stimulus write was sent."); return;
         }
         try { ble.write(UUID.fromString(LegacyProtocol.CONNECTION),LegacyProtocol.connectionHandshake(serial),"Local handshake"); }
@@ -514,6 +525,7 @@ public final class MainActivity extends Activity implements BleController.Listen
                 }).show();
     }
     private void writeRtc(byte[] bytes,String label) {
+        if(sharedBle.todoSending){ notice("Let the current to-do action finish first."); return; }
         if(!label.startsWith("Alarm:"))cancelPlay("Countdown cancelled. Alarm control takes priority.");
         if(isAlarmBusy()&&!label.startsWith("Alarm:")) { notice("Wait for the alarm save to finish."); return; }
         if(ready&&sessionReady) ble.write(UUID.fromString(LegacyProtocol.RTC),bytes,label);
@@ -565,7 +577,7 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private void notice(String message) { new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show(); }
     private void exportReport() {
-        exportText="LibrePavlok 0.2.1 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
+        exportText="LibrePavlok 0.3.0 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
         Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT); i.setType("text/plain"); i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_TITLE,"librepavlok-report.txt"); startActivityForResult(i,102);
     }
     @Override protected void onActivityResult(int r,int result,Intent data) {
@@ -595,6 +607,7 @@ public final class MainActivity extends Activity implements BleController.Listen
         }
     }
     @Override public void onValue(UUID uuid,byte[] value) {
+        if(sharedBle.sessionReady)sessionReady=true;
         String u=uuid.toString(); String s=new String(value,StandardCharsets.UTF_8).replace("\u0000","").trim();
         if(u.equals(LegacyProtocol.FIRMWARE)) {
             firmware=s;
@@ -648,6 +661,7 @@ public final class MainActivity extends Activity implements BleController.Listen
         if(deviceInfo!=null&&ready)deviceInfo.setText("Battery "+battery+"\nFirmware "+(firmware.isEmpty()?"Reading…":firmware)+" · Hardware "+hardware+"\n"+(sessionReady?"Connected and ready.":"Getting ready…"));
     }
     @Override public void onWriteComplete(UUID uuid,String label,boolean success) {
+        if(label.startsWith("To-do:")){ updateControls(); if(activeTab==4)todos.refresh(); return; }
         boolean stimulus=label.equals("Vibrate once")||label.equals("Beep once")||label.startsWith("Shock once")||label.startsWith("Play:");
         if(stimulus) {
             stimulusInFlight=false;
@@ -678,13 +692,23 @@ public final class MainActivity extends Activity implements BleController.Listen
         if(label.equals("Clear alarms")&&success){ preferences.edit().remove("lastSaved").remove("lastSavedShort").apply(); refreshSavedSummary(); alarmStatus.setText("All clear. The alarm records were removed."); }
     }
     @Override public void onLog(String message) {
+        if(message.startsWith("To-do:")&&sharedBle!=null){ updateControls(); if(activeTab==4&&todos!=null)todos.refresh(); }
         String line=String.format(Locale.ROOT,"%tT  %s\n",new Date(),message); logs.append(line); if(logs.length()>24000) logs.delete(0,logs.length()-24000);
         if(logView!=null) logView.setText(logs.toString()); android.util.Log.i("LibrePavlok",message);
         if(status!=null&&!ready&&message.equals("Scan finished.")) status.setText(seen.isEmpty()?"No wearable found":"Pick your wearable");
     }
     @Override protected void onPause(){ cancelPlay("Paused. Nothing sent."); saveDraft(); super.onPause(); }
+    @Override protected void onResume(){
+        super.onResume();
+        if(todos!=null) {
+            try { TodoScheduler.resumeFromUi(this); }
+            catch(RuntimeException e){ new TodoStore(this).setEnabled(false); TodoScheduler.cancel(this); }
+            if(activeTab==4)todos.refresh();
+        }
+    }
+    @Override protected void onNewIntent(Intent intent){ super.onNewIntent(intent); setIntent(intent); if(todos!=null&&intent.getBooleanExtra("openTodos",false))showTab(4); }
     @Override public void onBackPressed(){ if(playCountdown!=null){ cancelPlay("Cancelled. Nothing sent."); return; } if(activeTab!=0){ showTab(0); return; } super.onBackPressed(); }
-    @Override protected void onDestroy() { cancelPlay("Cancelled. Nothing sent."); handler.removeCallbacksAndMessages(null); if(ble!=null) ble.close(); super.onDestroy(); }
+    @Override protected void onDestroy() { cancelPlay("Cancelled. Nothing sent."); handler.removeCallbacksAndMessages(null); if(sharedBle!=null){ sharedBle.activityBusy=null; sharedBle.detach(this); } super.onDestroy(); }
 
     private int dp(int n) { return Math.round(n*getResources().getDisplayMetrics().density); }
     private LinearLayout card(LinearLayout parent) {

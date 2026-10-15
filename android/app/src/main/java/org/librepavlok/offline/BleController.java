@@ -222,6 +222,7 @@ public final class BleController {
     }
 
     public boolean isLegacyReady() { return ready; }
+    public boolean isIdle() { return active==null && queue.isEmpty(); }
     public String getSerial() { return serial; }
     public String getFirmware() { return firmware; }
 

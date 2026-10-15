@@ -12,6 +12,8 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.SeekBar;
 import android.widget.Spinner;
+import android.widget.EditText;
+import org.json.JSONArray;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.lang.reflect.Field;
@@ -26,6 +28,7 @@ public final class UiSmokeTest extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try {
+            if(smoke)getTargetContext().getSharedPreferences("todos",0).edit().clear().commit();
             if(smoke)getTargetContext().getSharedPreferences("companion",0).edit().putInt("draftHour",7).putInt("draftMinute",0).putInt("draftRepeat",0).putInt("draftKind",1).putInt("draftLevel",6).putInt("remoteLevel",0).putInt("playLevel",0).remove("disclaimerVersion").commit();
             activity=startActivitySync(new Intent().setClassName("org.librepavlok.offline","org.librepavlok.offline.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync(); Thread.sleep(250);
@@ -57,7 +60,45 @@ public final class UiSmokeTest extends Instrumentation {
             nav("Alarm"); screenshot("alarm");
             nav("Play"); screenshot("play");
             nav("Device"); screenshot("device");
+            nav("To-dos"); screenshot("todos");
             if(smoke) {
+                onUi(() -> {
+                    try {
+                        check(!getTargetContext().getSharedPreferences("todos",0).getBoolean("enabled",false),"To-dos disabled by default");
+                        Object panel=value("todos");
+                        Class<?> item=activity.getClassLoader().loadClass("org.librepavlok.offline.TodoItem");
+                        Method edit=panel.getClass().getDeclaredMethod("edit",item); edit.setAccessible(true); edit.invoke(panel,new Object[]{null});
+                    } catch(Exception e){ throw new RuntimeException(e); }
+                });
+                waitForIdleSync();
+                onUi(() -> {
+                    try {
+                        Object panel=value("todos");
+                        Field editorField=panel.getClass().getDeclaredField("editor"); editorField.setAccessible(true);
+                        AlertDialog editor=(AlertDialog)editorField.get(panel);
+                        ((EditText)find(editor.getWindow().getDecorView(),"todo:title")).setText("Finish the report");
+                        ((EditText)find(editor.getWindow().getDecorView(),"todo:reminder")).setText("0");
+                        ((SeekBar)find(editor.getWindow().getDecorView(),"todo:strength")).setProgress(9);
+                        editor.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                        Field reviewField=panel.getClass().getDeclaredField("reviewDialog"); reviewField.setAccessible(true);
+                        AlertDialog review=(AlertDialog)reviewField.get(panel);
+                        check(review!=null&&review.isShowing(),"To-do deadline and shock confirmation");
+                        review.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                    } catch(Exception e){ throw new RuntimeException(e); }
+                });
+                waitForIdleSync();
+                onUi(() -> {
+                    try {
+                        JSONArray rows=new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]"));
+                        check(rows.length()==1&&rows.getJSONObject(0).getInt("strength")==100,"To-do saved with independent 100% strength");
+                        String id=rows.getJSONObject(0).getString("id");
+                        ((CheckBox)find(activity.getWindow().getDecorView(),"todo:done:"+id)).setChecked(true);
+                        rows=new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]"));
+                        check(rows.getJSONObject(0).getBoolean("completed"),"Completing a to-do persists");
+                        check(!getTargetContext().getSharedPreferences("todos",0).getBoolean("enabled",false),"Saving tasks does not enable shocks");
+                    } catch(Exception e){ throw new RuntimeException(e); }
+                });
+                screenshot("todos-completed");
                 onUi(() -> {
                     SeekBar remote=(SeekBar)value("level"),alarm=(SeekBar)value("alarmLevel");
                     remote.setProgress(9); alarm.setProgress(3);
@@ -94,7 +135,10 @@ public final class UiSmokeTest extends Instrumentation {
                     check(((SeekBar)value("alarmLevel")).getProgress()==3,"Alarm strength restored");
                     check(((SeekBar)value("level")).getProgress()==9,"Remote strength restored");
                     check(((SeekBar)value("playLevel")).getProgress()==9,"Play strength restored");
+                    try { check(new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]")).getJSONObject(0).getBoolean("completed"),"Completed to-do survives relaunch"); }
+                    catch(Exception e){ throw new RuntimeException(e); }
                 });
+                getTargetContext().getSharedPreferences("todos",0).edit().clear().commit();
             }
             nav("Remote"); result.putInt("ui_checks",checks); result.putString("screenshots",getTargetContext().getExternalFilesDir(null).toString()); finish(0,result);
         } catch(Throwable e){ result.putString("error",e.toString()); finish(1,result); }

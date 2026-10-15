@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-10-15 (to-do preview)
+
+- Added an optional, default-paused To-dos tab with local tasks, individual date/time deadlines and configurable advance phone reminders.
+- Added a confirmed, independently chosen 10–100% single shock for each unfinished task; completion and deletion cancel pending events.
+- Added connected-device foreground monitoring with a persistent pause action, exact phone alarms and recovery for future events after reboot/update.
+- Shared the Bluetooth connection with existing controls; preserved the separate wearable alarm workflow.
+- Claimed events durably before dispatch, recorded missed/failed outcomes and prevented automatic retries or catch-up shocks after interruptions.
+- Added 36 pure Java to-do checks, task UI coverage and emulator-only monitoring integration tests.
+- Documented usage, permissions, delivery limits and validation in `docs/todos.md` and `docs/release-0.3.0.md`.
+
 ## 0.2.1 — 2026-10-14
 
 - Added a first-launch liability notice with explicit acknowledgement or exit before Bluetooth or controls initialize.

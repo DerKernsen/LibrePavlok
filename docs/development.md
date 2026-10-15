@@ -17,6 +17,8 @@ Output: `dist/LibrePavlok-debug.apk`. The builder creates `android/build/standal
 
 ## Architecture
 
+Version 0.3.0 adds the optional to-do monitor and one shared BLE controller for activity/service ownership. See [to-do architecture and behavior](todos.md#implementation). Monitoring remains disabled until explicitly enabled in its own tab.
+
 | File | Responsibility |
 | --- | --- |
 | `LegacyProtocol.java` | UUIDs, version detection, intensity mapping, RTC/record encoding and notification validation. No Android dependency. |
@@ -29,6 +31,8 @@ Output: `dist/LibrePavlok-debug.apk`. The builder creates `android/build/standal
 All three strength preferences persist independently. Saving captures the alarm settings, then stores the verified summary only after the wearable reports armed. Competing commands are disabled during saving. Failure or interruption cancels queued work and delayed activation. Actuator commands are never automatically retried after reconnecting.
 
 ## Logic tests
+
+The current script also runs `TodoItemTest`: 36 checks for reminder/deadline boundaries, completion, one-shot claims, lateness, independent tasks and input validation. The existing 213 protocol and 21 countdown checks remain included.
 
 `scripts/test-protocol.ps1` runs 213 protocol checks and 21 countdown checks. Countdown checks cover 100% shock preservation, one-use dispatch, cancellation, disconnection, locked controls, revoked agreement and conflicting work.
 
@@ -46,6 +50,19 @@ java -ea -cp android/build/protocol-tests org.librepavlok.offline.PlayCountdownT
 ```
 
 ## UI instrumentation
+
+The 0.3.0 smoke suite runs 28 checks and screenshots all five tabs. It also covers a confirmed 100% to-do, completion and persistence without enabling monitoring. Use smoke mode only on an emulator: it resets draft and to-do preferences.
+
+`TodoMonitorTest` is emulator-only. It uses no remembered Bluetooth address and checks phone reminders/deadlines without actuator writes. For Android 12+ grant exact-alarm access; Android 13+ also needs notification permission. For example, on an Android 14 emulator:
+
+```powershell
+adb -s emulator-5556 shell pm grant org.librepavlok.offline android.permission.BLUETOOTH_CONNECT
+adb -s emulator-5556 shell pm grant org.librepavlok.offline android.permission.POST_NOTIFICATIONS
+adb -s emulator-5556 shell appops set org.librepavlok.offline SCHEDULE_EXACT_ALARM allow
+adb -s emulator-5556 shell am instrument -w org.librepavlok.offline.tests/org.librepavlok.offline.tests.TodoMonitorTest
+```
+
+The monitoring suite briefly forces emulator idle mode for a background deadline, then restores it and clears its task fixture. It checks disconnected/stale/completed tasks, duplicate starts, pause and clock edits. On a physical phone omit smoke mode: the UI suite preserves preferences and captures the five tabs without connecting to Bluetooth. It does not validate physical shock delivery.
 
 Build the companion first, then the separate test package:
 
