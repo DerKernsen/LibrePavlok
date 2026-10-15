@@ -4,14 +4,17 @@ package org.librepavlok.offline;
 public final class PlayCountdown {
     public final boolean shock;
     public final int strength;
+    public final PulsePlan pulse;
     private final long deadline;
     private boolean pending=true;
 
     public PlayCountdown(boolean shock,int requestedStrength,int delaySeconds,long now) {
-        if(requestedStrength<10||requestedStrength>100||requestedStrength%10!=0)
-            throw new IllegalArgumentException("Choose a strength in steps of ten");
+        this(new PulsePlan(shock?PulsePlan.SHOCK:PulsePlan.VIBRATION,requestedStrength,640,1),delaySeconds,now);
+    }
+    public PlayCountdown(PulsePlan pulse,int delaySeconds,long now) {
+        if(pulse==null)throw new IllegalArgumentException("Choose a pulse.");
         if(delaySeconds<3||delaySeconds>8)throw new IllegalArgumentException("Delay must be 3–8 seconds");
-        this.shock=shock; strength=requestedStrength;
+        this.pulse=pulse; this.shock=pulse.signal==PulsePlan.SHOCK; strength=pulse.strength;
         deadline=now+delaySeconds*1000L;
     }
     public boolean isPending(){ return pending; }

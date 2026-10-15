@@ -19,6 +19,12 @@ Device serial, firmware, hardware and battery use standard Device Information / 
 
 Immediate vibration/beep map 10–100% to decimal bytes `55,75,95,115,135,155,175,195,215,255`. Immediate shock maps them to `32,64,85,112,128,144,160,176,192,255`. A single shock packet is `81 intensity 01 00` in hexadecimal. Stored alarms use different nibble mappings; immediate intensity bytes must not be substituted there.
 
+## Immediate pulse timing
+
+Vibration/beep use `80|count intensity on/20 off/20`: each time is an unsigned byte in 20 ms units. This app exposes 20–5100 ms on-time, a 640 ms off interval and 1–7 repeats. Immediate shock uses `81 intensity count 00`; its count is separate from the opcode and there is no verified adjustable shock-width field. The UI therefore exposes shock repeats rather than milliseconds.
+
+Onboard records expose repetitions in their existing signal fields, including shock; they have no verified per-pulse millisecond field. See [pulse timing](pulse-timing.md) for observed sources, examples, defaults and runtime limits.
+
 ## RTC commands
 
 All bytes in this table are hexadecimal. `BCD(26)` is `26`; weekday is Sunday=1 through Saturday=7.

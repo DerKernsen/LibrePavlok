@@ -82,6 +82,10 @@ final class AppUi {
             if(glyph.equals("alarm")) {
                 canvas.drawCircle(16,18,10,pen); line(canvas,16,12,16,18); line(canvas,16,18,21,21);
                 line(canvas,8,5,4,9); line(canvas,24,5,28,9); line(canvas,9,27,7,30); line(canvas,23,27,25,30);
+            } else if(glyph.equals("todo")) {
+                canvas.drawRoundRect(5,3,27,29,4,4,pen);
+                line(canvas,9,11,11,13); line(canvas,11,13,15,8); line(canvas,18,11,23,11);
+                line(canvas,9,21,11,23); line(canvas,11,23,15,18); line(canvas,18,21,23,21);
             } else if(glyph.equals("device")) {
                 canvas.drawRoundRect(8,7,24,25,5,5,pen); line(canvas,12,2,20,2); line(canvas,12,30,20,30);
                 line(canvas,12,2,11,7); line(canvas,20,2,21,7); line(canvas,11,25,12,30); line(canvas,21,25,20,30);

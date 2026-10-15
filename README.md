@@ -2,6 +2,10 @@
 
 An offline Android companion for the original Shock Clock / Pavlok-1 Bluetooth profile. Direct wearable controls, verified onboard alarm saving, and a cancellable Play countdown. No account, cloud, subscription, or Internet permission.
 
+**0.3.1 pulse timing preview:** an optional fifth **To-dos** tab adds individual deadlines, advance phone reminders and a confirmed signal burst if a task remains unfinished. Monitoring starts paused. See [usage and delivery limits](docs/todos.md) and [preview validation](docs/release-0.3.1.md). Development and the bundled preview APK live on `feature/todo-deadlines`; `main` remains unchanged.
+
+**[Download the pulse timing preview APK](https://github.com/DerKernsen/LibrePavlok/releases/tag/v0.3.1-pulse-preview.1)** (prerelease).
+
 **[Download version 0.2.1](https://github.com/DerKernsen/LibrePavlok/releases/latest)** · [Changelog](CHANGELOG.md) · [Build and test](docs/development.md) · [Alarm protocol](docs/protocol.md)
 
 ## Liability notice
@@ -16,14 +20,17 @@ On first launch, including the first launch after installing this notice update,
   <img src="docs/screenshots/play.png" width="220" alt="Play: signal, strength and countdown controls" />
 </p>
 
+Pulse timing is configurable across Remote, Alarm, Play and To-dos. Direct vibration/beep offer 20–5100 ms per pulse and 1–7 repeats; shock and onboard alarms use repeat counts because the wearable fixes their pulse width. See [timing controls and limits](docs/pulse-timing.md).
+
 ## Everyday controls
 
 | Screen | What it does |
 | --- | --- |
-| **Remote** | Large vibration and beep buttons, a single shock with confirmation, strength presets, last verified alarm, and Stop alarm. |
+| **Remote** | Large vibration and beep buttons, shock bursts with confirmation, strength presets, last verified alarm, and Stop alarm. |
 | **Alarm** | Time picker, 15/25/45-minute nap shortcuts, once or daily, vibration/beep/shock, independent strength, snooze, stop, and a fixed Save button. |
-| **Play** | A delayed vibration or shock for an agreed-on joke. Choose a fixed or random delay, watch the countdown, and cancel from the fixed bottom action. |
+| **Play** | A delayed vibration, beep or shock burst. Choose a fixed or random delay, watch the countdown, and cancel from the fixed bottom action. |
 | **Device** | Find/reconnect a wearable, battery and firmware, connection tools, alarm status, and local diagnostic export. |
+| **To-dos** | Optional local task list, deadlines, advance reminders, per-task signal, strength and timing, completion and background-monitoring pause. |
 
 Remote, Alarm and Play have separate, remembered strength settings. **Every strength control reaches 100%**, using the legacy device's ten-percent steps. Play has no additional intensity cap. Shock controls use an unlock and a concise confirmation. Play's shock option also asks for wearer agreement.
 
@@ -50,6 +57,8 @@ The supplied APK is locally debug-signed. Builds made with a different signing k
 The save function includes the original app's extra 23:59:59 record. It was missing in the unsuccessful one-record standalone test and present in the successful two-record tests. This establishes the working sequence on the tested wearable, but does not prove the firmware's internal reason. See [the alarm investigation](docs/alarm-investigation.md).
 
 Same-day standalone beep firing is verified. Daily rollover, next-day one-shot execution, the helper record's midnight sound, scheduled shock firing and snooze behavior still need longer hardware tests. The app currently saves one user alarm plus that helper record. It stores local wall time, so timezone or DST changes require saving again. Play runs while its screen is active and connected; leaving it, pausing the app or losing the connection cancels the countdown. The app does not schedule phone alarms as a fallback.
+
+To-do deadlines use the phone's Bluetooth connection, exact alarms and an optional foreground service. They require the phone and wearable to remain available; failed or disconnected shocks are never retried. They do not overwrite the separate onboard wake-up alarm. Read [the to-do guide](docs/todos.md) for permissions, scheduling limits and interruption behavior.
 
 ## Build
 

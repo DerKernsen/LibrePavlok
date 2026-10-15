@@ -3,4 +3,5 @@
     <application android:label="LibrePavlok device tests" />
     <instrumentation android:name="org.librepavlok.offline.tests.AlarmDeviceTest" android:targetPackage="org.librepavlok.offline" />
     <instrumentation android:name="org.librepavlok.offline.tests.UiSmokeTest" android:targetPackage="org.librepavlok.offline" />
+    <instrumentation android:name="org.librepavlok.offline.tests.TodoMonitorTest" android:targetPackage="org.librepavlok.offline" />
 </manifest>
