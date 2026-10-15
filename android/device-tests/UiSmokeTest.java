@@ -79,6 +79,9 @@ public final class UiSmokeTest extends Instrumentation {
                         ((EditText)find(editor.getWindow().getDecorView(),"todo:title")).setText("Finish the report");
                         ((EditText)find(editor.getWindow().getDecorView(),"todo:reminder")).setText("0");
                         ((SeekBar)find(editor.getWindow().getDecorView(),"todo:strength")).setProgress(9);
+                        ((Spinner)find(editor.getWindow().getDecorView(),"todo:signal")).setSelection(2);
+                        ((SeekBar)find(editor.getWindow().getDecorView(),"todo:duration")).setProgress(249);
+                        ((SeekBar)find(editor.getWindow().getDecorView(),"todo:count")).setProgress(4);
                         editor.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
                         Field reviewField=panel.getClass().getDeclaredField("reviewDialog"); reviewField.setAccessible(true);
                         AlertDialog review=(AlertDialog)reviewField.get(panel);
@@ -91,6 +94,7 @@ public final class UiSmokeTest extends Instrumentation {
                     try {
                         JSONArray rows=new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]"));
                         check(rows.length()==1&&rows.getJSONObject(0).getInt("strength")==100,"To-do saved with independent 100% strength");
+                        check(rows.getJSONObject(0).getInt("signal")==2&&rows.getJSONObject(0).getInt("durationMs")==5000&&rows.getJSONObject(0).getInt("pulseCount")==5,"To-do saves signal, duration and repeats");
                         String id=rows.getJSONObject(0).getString("id");
                         ((CheckBox)find(activity.getWindow().getDecorView(),"todo:done:"+id)).setChecked(true);
                         rows=new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]"));
@@ -103,11 +107,27 @@ public final class UiSmokeTest extends Instrumentation {
                     SeekBar remote=(SeekBar)value("level"),alarm=(SeekBar)value("alarmLevel");
                     remote.setProgress(9); alarm.setProgress(3);
                     check(remote.getProgress()==9&&alarm.getProgress()==3,"Independent strengths");
+                    timing("remotePulses",0,"duration").setProgress(99); timing("remotePulses",0,"count").setProgress(2);
+                    timing("remotePulses",2,"duration").setProgress(254); timing("remotePulses",2,"count").setProgress(6);
+                    timing("remotePulses",1,"count").setProgress(2);
+                    timing("alarmPulses",0,"count").setProgress(4); timing("alarmPulses",2,"count").setProgress(6); timing("alarmPulses",1,"count").setProgress(3);
+                    timing("playPulses",0,"duration").setProgress(149); timing("playPulses",0,"count").setProgress(4);
+                    timing("playPulses",1,"count").setProgress(5);
+                    timing("playPulses",2,"duration").setProgress(49); timing("playPulses",2,"count").setProgress(1);
+                    check(timing("remotePulses",2,"duration").getProgress()==254&&timing("remotePulses",0,"duration").getProgress()==99,"Remote beep and vibration durations independent");
                     check(!((Button)value("shockButton")).isEnabled(),"Shock starts locked");
                     set("ready",true); set("sessionReady",true); invoke("updateControls");
                     invoke("showTab",new Class<?>[]{int.class},2);
                     ((SeekBar)value("playLevel")).setProgress(9);
                     ((CheckBox)value("shockEnabled")).setChecked(true); ((CheckBox)value("playConsent")).setChecked(true);
+                    set("firmware","2.4.99");
+                    invoke("shock"); AlertDialog shockReview=(AlertDialog)value("shockConfirmation");
+                    check(((android.widget.TextView)shockReview.findViewById(android.R.id.message)).getText().toString().contains("3 shocks"),"Remote confirmation names repeat count");
+                    shockReview.dismiss();
+                    ((Spinner)value("alarmKind")).setSelection(1); invoke("confirmAlarm");
+                    AlertDialog alarmReview=(AlertDialog)value("alarmConfirmation");
+                    check(((android.widget.TextView)alarmReview.findViewById(android.R.id.message)).getText().toString().contains("7 beep pulses per alarm cycle"),"Alarm confirmation names saved pulse count");
+                    alarmReview.dismiss();
                     ((Spinner)value("playMode")).setSelection(1); ((Spinner)value("playDelay")).setSelection(2);
                     invoke("confirmPlay");
                     AlertDialog dialog=(AlertDialog)value("playConfirmation");
@@ -119,9 +139,20 @@ public final class UiSmokeTest extends Instrumentation {
                     check(value("playCountdown")!=null,"Countdown starts");
                     try { check(value("playCountdown").getClass().getField("strength").getInt(value("playCountdown"))==100,"Play preserves 100% strength"); }
                     catch(Exception e){ throw new RuntimeException(e); }
+                    check(planInt("count")==6,"Play captures chosen shock repeat count");
+                    check(!timing("playPulses",1,"count").isEnabled(),"Running countdown freezes pulse settings");
                     ((Button)value("playCancel")).performClick();
                     check(value("playCountdown")==null,"Cancel removes countdown");
                     check(!(Boolean)value("stimulusInFlight"),"Cancelled play does not dispatch");
+                    ((Spinner)value("playMode")).setSelection(2);
+                    ((CheckBox)value("shockEnabled")).setChecked(false); ((CheckBox)value("playConsent")).setChecked(false);
+                    invoke("confirmPlay");
+                    ((AlertDialog)value("playConfirmation")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+                });
+                waitForIdleSync();
+                onUi(() -> {
+                    check(planInt("signal")==2&&planInt("durationMs")==1000&&planInt("count")==2,"Play beep captures duration and repeats without shock consent");
+                    ((Button)value("playCancel")).performClick();
                     set("ready",false); set("sessionReady",false); invoke("updateControls");
                     check(!((Button)value("playStart")).isEnabled(),"Disconnected play disabled");
                     set("hour",9); set("minute",25); ((Spinner)value("repeat")).setSelection(1);
@@ -135,6 +166,10 @@ public final class UiSmokeTest extends Instrumentation {
                     check(((SeekBar)value("alarmLevel")).getProgress()==3,"Alarm strength restored");
                     check(((SeekBar)value("level")).getProgress()==9,"Remote strength restored");
                     check(((SeekBar)value("playLevel")).getProgress()==9,"Play strength restored");
+                    check(timing("remotePulses",0,"duration").getProgress()==99&&timing("remotePulses",2,"duration").getProgress()==254,"Remote per-signal durations restored");
+                    check(timing("remotePulses",1,"count").getProgress()==2,"Remote shock repeats restored");
+                    check(timing("alarmPulses",0,"count").getProgress()==4&&timing("alarmPulses",2,"count").getProgress()==6&&timing("alarmPulses",1,"count").getProgress()==3,"Alarm signal counts restored independently");
+                    check(timing("playPulses",0,"duration").getProgress()==149&&timing("playPulses",1,"count").getProgress()==5&&timing("playPulses",2,"duration").getProgress()==49,"Play signal timing restored independently");
                     try { check(new JSONArray(getTargetContext().getSharedPreferences("todos",0).getString("items","[]")).getJSONObject(0).getBoolean("completed"),"Completed to-do survives relaunch"); }
                     catch(Exception e){ throw new RuntimeException(e); }
                 });
@@ -153,6 +188,8 @@ public final class UiSmokeTest extends Instrumentation {
         bitmap.recycle();
     }
     private Object value(String name){ try{ Field f=activity.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(activity); }catch(Exception e){ throw new RuntimeException(e); } }
+    private SeekBar timing(String group,int signal,String name){ try{ Object editor=((Object[])value(group))[signal]; Field f=editor.getClass().getDeclaredField(name); f.setAccessible(true); return (SeekBar)f.get(editor); }catch(Exception e){ throw new RuntimeException(e); } }
+    private int planInt(String name){ try{ Object plan=value("playCountdown").getClass().getField("pulse").get(value("playCountdown")); return plan.getClass().getField(name).getInt(plan); }catch(Exception e){ throw new RuntimeException(e); } }
     private void set(String name,Object value){ try{ Field f=activity.getClass().getDeclaredField(name); f.setAccessible(true); f.set(activity,value); }catch(Exception e){ throw new RuntimeException(e); } }
     private void invoke(String name){ invoke(name,new Class<?>[0]); }
     private void invoke(String name,Class<?>[] types,Object...args){ try{ Method m=activity.getClass().getDeclaredMethod(name,types); m.setAccessible(true); m.invoke(activity,args); }catch(Exception e){ throw new RuntimeException(e); } }

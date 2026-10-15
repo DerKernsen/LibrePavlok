@@ -28,6 +28,8 @@ public final class TodoMonitorTest extends Instrumentation {
             rows.put(task("due",now-1000,0,false));
             rows.put(task("stale",now-61000,0,false));
             rows.put(task("done",now-1000,0,true));
+            rows.put(task("beep",now-1000,0,false).put("signal",2).put("durationMs",5100).put("pulseCount",7));
+            rows.put(task("vibration",now-1000,0,false).put("signal",0).put("durationMs",2000).put("pulseCount",3));
             store.edit().putString("items",rows.toString()).putBoolean("enabled",true).commit();
             Intent service=new Intent().setClassName("org.librepavlok.offline","org.librepavlok.offline.TodoService");
             runOnMainSync(() -> { if(Build.VERSION.SDK_INT>=26)getTargetContext().startForegroundService(service); else getTargetContext().startService(service); });
@@ -38,6 +40,9 @@ public final class TodoMonitorTest extends Instrumentation {
             check(find(actual,"due").getString("outcome").contains("No shock sent"),"Disconnected deadline records no shock");
             check(find(actual,"stale").getString("outcome").contains("interrupted"),"Old deadline skips shock");
             check(!find(actual,"done").getBoolean("handled"),"Completed deadline ignored");
+            check(find(actual,"due").getInt("signal")==1&&find(actual,"due").getInt("pulseCount")==1,"Previous task JSON migrates to one shock");
+            check(find(actual,"beep").getInt("durationMs")==5100&&find(actual,"beep").getInt("pulseCount")==7&&find(actual,"beep").getString("outcome").contains("No beep sent"),"Beep timing retained and disconnection handled");
+            check(find(actual,"vibration").getInt("signal")==0&&find(actual,"vibration").getString("outcome").contains("No vibration sent"),"Vibration task timing retained");
             String outcomes=actual.toString();
             runOnMainSync(() -> getTargetContext().startService(service));
             Thread.sleep(1200);

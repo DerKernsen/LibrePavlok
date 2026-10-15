@@ -36,7 +36,7 @@ final class TodoPanel {
         AppUi.text(root,"Your tasks, with a deadline for each one.",14,AppUi.MUTED,false);
         LinearLayout settings=AppUi.card(root,AppUi.SOFT);
         AppUi.text(settings,store.enabled()?"Monitoring enabled":"Optional · monitoring paused",18,AppUi.INK,true);
-        AppUi.text(settings,"An unfinished task sends one shock at its deadline. Reminders appear on your phone. Keep the wearable connected and nearby; failed shocks are never retried.",13,AppUi.MUTED,false);
+        AppUi.text(settings,"An unfinished task sends its chosen signal burst at the deadline. Reminders appear on your phone. Keep the wearable connected and nearby; failed bursts are never retried.",13,AppUi.MUTED,false);
         AppUi.button(settings,store.enabled()?"Pause monitoring":"Enable monitoring",AppUi.GREEN,AppUi.WHITE,v -> {
             if(store.enabled()) {
                 if(store.setEnabled(false)){ TodoScheduler.refresh(activity); refresh(); }
@@ -60,7 +60,7 @@ final class TodoPanel {
         CheckBox done=new CheckBox(activity); done.setText(t.title); done.setTextSize(18); done.setTextColor(AppUi.INK);
         done.setMinHeight(AppUi.dp(activity,48)); done.setChecked(t.completed); done.setTag("todo:done:"+t.id); card.addView(done);
         AppUi.text(card,format(t.dueAt),16,AppUi.GREEN,true);
-        AppUi.text(card,(t.reminderMinutes==0?"No advance reminder":t.reminderMinutes+" min before")+" · one "+t.strength+"% shock if unfinished",12,AppUi.MUTED,false);
+        AppUi.text(card,(t.reminderMinutes==0?"No advance reminder":t.reminderMinutes+" min before")+" · "+t.pulse().description()+" if unfinished",12,AppUi.MUTED,false);
         if(!t.outcome.isEmpty())AppUi.text(card,t.outcome,12,AppUi.MUTED,false);
         else if(t.dueAt<=System.currentTimeMillis()&&!t.completed)AppUi.text(card,"Overdue",13,AppUi.INK,true);
         done.setOnCheckedChangeListener((b,checked) -> {
@@ -106,8 +106,8 @@ final class TodoPanel {
     }
     private void enable() {
         if(!permissions())return;
-        new AlertDialog.Builder(activity).setTitle("Enable to-do deadline shocks?")
-                .setMessage("Each unfinished task can send one shock at its chosen strength, including while this app is in the background. A persistent notification lets you pause monitoring. Old deadlines will be skipped; they will not trigger a catch-up shock.")
+        new AlertDialog.Builder(activity).setTitle("Enable to-do deadline signals?")
+                .setMessage("Each unfinished task can send its chosen burst, including repeated shocks, while this app is in the background. A persistent notification lets you pause monitoring. Old deadlines will be skipped; they will not trigger a catch-up burst.")
                 .setNegativeButton("Not now",null).setPositiveButton("Enable monitoring",(d,w) -> {
                     List<TodoItem> items=store.load();
                     for(TodoItem t:items)if(t.deadlineDue(System.currentTimeMillis())){ t.handled=true; t.outcome="Deadline passed while paused. No shock sent."; }
@@ -129,7 +129,12 @@ final class TodoPanel {
         AppUi.text(form,"Remind me this many minutes before (0 = off)",13,AppUi.MUTED,false);
         EditText reminder=new EditText(activity); reminder.setInputType(InputType.TYPE_CLASS_NUMBER); reminder.setSingleLine(true);
         reminder.setFilters(new InputFilter[]{new InputFilter.LengthFilter(5)}); reminder.setText(String.valueOf(existing==null?30:existing.reminderMinutes)); reminder.setTag("todo:reminder"); form.addView(reminder);
-        AppUi.text(form,"One shock if unfinished",15,AppUi.INK,true);
+        AppUi.text(form,"Signal if unfinished",15,AppUi.INK,true);
+        Spinner signal=new Spinner(activity);
+        ArrayAdapter<String> signals=new ArrayAdapter<>(activity,android.R.layout.simple_spinner_item,new String[]{"Vibration","Shock","Beep"});
+        signals.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); signal.setAdapter(signals);
+        signal.setSelection(existing==null?PulsePlan.SHOCK:existing.signal); signal.setTag("todo:signal");
+        form.addView(signal,new LinearLayout.LayoutParams(-1,AppUi.dp(activity,49)));
         TextView strengthLabel=AppUi.text(form,"",24,AppUi.GREEN,true);
         SeekBar strength=new SeekBar(activity); strength.setMax(9); strength.setProgress(existing==null?0:existing.strength/10-1); strength.setTag("todo:strength"); form.addView(strength);
         strengthLabel.setText(((strength.getProgress()+1)*10)+"%");
@@ -137,17 +142,24 @@ final class TodoPanel {
             public void onProgressChanged(SeekBar b,int p,boolean user){ strengthLabel.setText(((p+1)*10)+"%"); }
             public void onStartTrackingTouch(SeekBar b){} public void onStopTrackingTouch(SeekBar b){}
         });
-        AppUi.text(form,"Marking it done cancels its pending reminder and shock. Monitoring must be enabled for actions to run.",12,AppUi.MUTED,false);
+        PulseEditor timing=new PulseEditor(form,"Deadline pulse",signal.getSelectedItemPosition(),false,existing==null?640:existing.durationMs,existing==null?1:existing.pulseCount);
+        timing.count.setTag("todo:count"); timing.duration.setTag("todo:duration");
+        signal.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int position,long id){ timing.setSignal(position); }
+            public void onNothingSelected(android.widget.AdapterView<?> p){}
+        });
+        AppUi.text(form,"Marking it done cancels its pending reminder and burst. Monitoring must be enabled for actions to run. A burst already submitted to the wearable cannot be recalled.",12,AppUi.MUTED,false);
         ScrollView scroll=new ScrollView(activity); scroll.addView(form);
         editor=new AlertDialog.Builder(activity).setTitle(existing==null?"Add to-do":"Edit to-do").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Review",null).create();
         editor.setOnShowListener(d -> editor.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             try {
                 int minutes=Integer.parseInt(reminder.getText().toString()); long deadline=due.getTimeInMillis();
                 if(deadline<=System.currentTimeMillis())throw new IllegalArgumentException("Choose a future deadline.");
-                TodoItem task=new TodoItem(existing==null?UUID.randomUUID().toString():existing.id,title.getText().toString(),deadline,minutes,(strength.getProgress()+1)*10);
+                timing.setSignal(signal.getSelectedItemPosition());
+                TodoItem task=new TodoItem(existing==null?UUID.randomUUID().toString():existing.id,title.getText().toString(),deadline,minutes,timing.snapshot((strength.getProgress()+1)*10));
                 if(minutes>0&&task.reminderAt()<=System.currentTimeMillis())throw new IllegalArgumentException("The advance reminder would already be past. Use fewer minutes or 0.");
-                reviewDialog=new AlertDialog.Builder(activity).setTitle("Save deadline and shock?")
-                        .setMessage(task.title+"\n"+format(task.dueAt)+"\nOne "+task.strength+"% shock if unfinished. "+(task.reminderMinutes>0?"Phone reminder "+task.reminderMinutes+" minutes before.":"No advance reminder.")+(!store.enabled()?"\nMonitoring is currently paused.":""))
+                reviewDialog=new AlertDialog.Builder(activity).setTitle("Save deadline and signal?")
+                        .setMessage(task.title+"\n"+format(task.dueAt)+"\n"+task.pulse().description()+" if unfinished. "+(task.reminderMinutes>0?"Phone reminder "+task.reminderMinutes+" minutes before.":"No advance reminder.")+(!store.enabled()?"\nMonitoring is currently paused.":""))
                         .setNegativeButton("Back",null).setPositiveButton("Save to-do",(dialog,which) -> {
                             List<TodoItem> items=store.load(); removeItem(items,task.id); items.add(task);
                             editor.dismiss(); changed(items);

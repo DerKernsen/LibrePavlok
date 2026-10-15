@@ -18,6 +18,8 @@ public final class TodoService extends Service implements BleController.Listener
     private TodoStore store;
     private PowerManager.WakeLock wake;
     private String sendingId;
+    private PulsePlan sendingPulse;
+    private long sendingDueAt;
     private long lastConnect;
     private boolean ticking;
     private final Runnable tick=new Runnable(){ @Override public void run(){ process(); handler.postDelayed(this,1000); } };
@@ -58,19 +60,21 @@ public final class TodoService extends Service implements BleController.Listener
                 }
                 if(!t.deadlineDue(now))continue;
                 if(link.todoSending)continue;
-                boolean send=t.canShock(now)&&link.available();
-                t.handled=true; t.outcome=send?"Shock requested; physical delivery is unverified.":now-t.dueAt>TodoItem.MAX_LATENESS_MS?"Deadline missed while monitoring was interrupted. No shock sent.":"Deadline missed: wearable disconnected or busy. No shock sent.";
+                PulsePlan pulse=t.pulse();
+                boolean send=t.canDispatch(now)&&link.available();
+                String skipped=" No "+pulse.name()+" sent.";
+                t.handled=true; t.outcome=send?"Burst requested: "+pulse.description()+"; physical delivery is unverified.":now-t.dueAt>TodoItem.MAX_LATENESS_MS?"Deadline missed while monitoring was interrupted."+skipped:"Deadline missed: wearable disconnected or busy."+skipped;
                 // Durable claim before BLE: a crash or duplicate alarm cannot repeat a shock.
                 if(!store.save(items))throw new IllegalStateException("Could not claim deadline");
                 if(send) {
-                    wake.acquire(15000); sendingId=t.id; link.todoSending=true;
-                    link.onLog("To-do: sending one deadline shock at "+t.strength+"%.");
-                    link.controller.write(UUID.fromString(LegacyProtocol.SHOCK),LegacyProtocol.shock(t.strength,link.controller.getFirmware()),"To-do:"+t.id);
+                    wake.acquire(15000); sendingId=t.id; sendingPulse=pulse; sendingDueAt=t.dueAt; link.todoSending=true;
+                    link.onLog("To-do: sending "+pulse.description()+".");
+                    link.controller.write(UUID.fromString(pulse.characteristic()),pulse.command(link.controller.getFirmware()),"To-do:"+t.id);
                     // Finish the next due task only after this write resolves.
                     break;
                 }
                 TodoNotifications.show(this,t.id.hashCode(),"Overdue: "+t.title,t.outcome+" Open To-dos to mark it done.");
-                link.onLog("To-do: missed deadline recorded without a shock.");
+                link.onLog("To-do: missed deadline recorded without a burst.");
             }
             TodoScheduler.schedule(this,items);
         } catch(RuntimeException e) {
@@ -83,12 +87,12 @@ public final class TodoService extends Service implements BleController.Listener
         if(sendingId==null||!label.equals("To-do:"+sendingId))return;
         try {
             List<TodoItem> items=store.load();
-            for(TodoItem t:items)if(t.id.equals(sendingId)) {
-                t.outcome=success?"Shock command sent. Physical delivery is unverified.":"Shock command failed or delivery is unknown. No retry.";
+            for(TodoItem t:items)if(t.id.equals(sendingId)&&t.handled&&t.dueAt==sendingDueAt) {
+                t.outcome=success?"Burst command sent: "+sendingPulse.description()+". Physical delivery is unverified.":"Burst command failed or delivery is unknown. No retry.";
                 TodoNotifications.show(this,t.id.hashCode(),"Overdue: "+t.title,t.outcome);
             }
             store.save(items);
-        } finally { sendingId=null; link.todoSending=false; if(wake.isHeld())wake.release(); link.onLog("To-do: deadline action finished."); }
+        } finally { sendingId=null; sendingPulse=null; link.todoSending=false; if(wake.isHeld())wake.release(); link.onLog("To-do: deadline action finished."); }
     }
     @Override public void onState(String state,boolean ready){}
     @Override public void onValue(UUID id,byte[] value){}

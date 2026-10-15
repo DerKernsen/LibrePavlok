@@ -17,6 +17,8 @@ Output: `dist/LibrePavlok-debug.apk`. The builder creates `android/build/standal
 
 ## Architecture
 
+Version 0.3.1 centralizes all actuator settings in immutable `PulsePlan` objects, with shared `PulseEditor` controls. Remote, Play and task dispatch use `PulsePlan.command`; onboard saving uses `PulsePlan.alarm`. Pulse duration/repeats are captured before confirmation/countdown dispatch. See [pulse timing](pulse-timing.md) and [0.3.1 validation](release-0.3.1.md).
+
 Version 0.3.0 adds the optional to-do monitor and one shared BLE controller for activity/service ownership. See [to-do architecture and behavior](todos.md#implementation). Monitoring remains disabled until explicitly enabled in its own tab.
 
 | File | Responsibility |
@@ -31,6 +33,8 @@ Version 0.3.0 adds the optional to-do monitor and one shared BLE controller for 
 All three strength preferences persist independently. Saving captures the alarm settings, then stores the verified summary only after the wearable reports armed. Competing commands are disabled during saving. Failure or interruption cancels queued work and delayed activation. Actuator commands are never automatically retried after reconnecting.
 
 ## Logic tests
+
+Current total: **436 checks** (213 protocol, 21 countdown, 36 to-do, 166 pulse-plan). `PulsePlanTest` validates direct durations/counts, the different shock count byte, all 1–7 counts and readbacks for each onboard signal across the firmware branches, invalid inputs and immutable snapshots. The standalone test script compiles the shared plan along with the existing logic.
 
 The current script also runs `TodoItemTest`: 36 checks for reminder/deadline boundaries, completion, one-shot claims, lateness, independent tasks and input validation. The existing 213 protocol and 21 countdown checks remain included.
 
@@ -50,6 +54,8 @@ java -ea -cp android/build/protocol-tests org.librepavlok.offline.PlayCountdownT
 ```
 
 ## UI instrumentation
+
+Current 0.3.1 suites: **39 UI checks** and **15 monitoring checks** on the Android 10 emulator. New UI assertions cover Remote/Alarm confirmation counts, per-signal timing persistence, beep countdowns and task timing. Monitoring fixtures include old task JSON and selected vibration/beep durations. All actuator tests remain packet-only; no physical burst is generated. The later 0.3.0 counts below describe the previous preview.
 
 The 0.3.0 smoke suite runs 28 checks and screenshots all five tabs. It also covers a confirmed 100% to-do, completion and persistence without enabling monitoring. Use smoke mode only on an emulator: it resets draft and to-do preferences.
 

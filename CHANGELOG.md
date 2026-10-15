@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 — 2026-10-15 (pulse timing preview)
+
+- Added independent vibration/beep pulse durations (20–5100 ms, in 20 ms steps) and 1–7 repeat controls throughout Remote, Play and To-dos.
+- Added shock repeat counts for longer firmware-managed bursts, with explicit counts in confirmations; shock pulse width remains fixed by the device.
+- Added per-signal onboard alarm counts (1–7 per cycle), verified readback and saved-summary counts; alarm tests and snooze retain the stored protocol behavior.
+- Added beep to Play and selectable vibration/beep/shock to To-dos, with immutable countdown snapshots and backward-compatible task migration.
+- Added packet, boundary, settings persistence, confirmation and task migration coverage. Documented protocol limits in `docs/pulse-timing.md`.
+
 ## 0.3.0 — 2026-10-15 (to-do preview)
 
 - Added an optional, default-paused To-dos tab with local tasks, individual date/time deadlines and configurable advance phone reminders.

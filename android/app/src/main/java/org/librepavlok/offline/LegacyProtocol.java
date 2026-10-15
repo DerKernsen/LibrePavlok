@@ -77,9 +77,14 @@ public final class LegacyProtocol {
         return pulse(percent, count, onMs, offMs);
     }
 
-    /** Exactly one shock, with no stored button assignment or repetition option. */
+    /** Backward-compatible single shock. Shock pulse width is firmware controlled. */
     public static byte[] shock(int percent, String firmware) {
-        return bytes(0x81, shockIntensity(percent, firmware), 1, 0);
+        return shock(percent,firmware,1);
+    }
+    /** One native burst, with no stored button assignment or phone-side retry. */
+    public static byte[] shock(int percent,String firmware,int count) {
+        range("shock count",count,1,7);
+        return bytes(0x81,shockIntensity(percent,firmware),count,0);
     }
 
     /** Serial is the device information serial, not an assumed advertising address. */
@@ -111,7 +116,7 @@ public final class LegacyProtocol {
     /**
      * Appends one alarm record. Percent zero disables that stimulus, with count zero.
      * Active alarm strengths must be 10..100 in increments of ten. Alarm shock count
-     * is fixed at one. A firmware alarm may continue until dismissed; this method
+     * uses 1..7 repetitions. A firmware alarm may continue until dismissed; this method
      * does not establish its dismissal behavior. Vibration+beep without shock is
      * rejected because the original app has no verified selector for that pair.
      * Unselected configurations retain the original app's 50-percent/count-one defaults.
@@ -119,12 +124,19 @@ public final class LegacyProtocol {
     public static byte[] alarm(String firmware, int repeatMask, Calendar localDateTime,
             int vibrationPercent, int vibrationCount, int beepPercent, int beepCount,
             int shockPercent, boolean delayShock, int snoozeCount, boolean snoozeZap, boolean snoozeLock) {
+        return alarm(firmware,repeatMask,localDateTime,vibrationPercent,vibrationCount,beepPercent,beepCount,
+                shockPercent,shockPercent==0?0:1,delayShock,snoozeCount,snoozeZap,snoozeLock);
+    }
+
+    public static byte[] alarm(String firmware,int repeatMask,Calendar localDateTime,
+            int vibrationPercent,int vibrationCount,int beepPercent,int beepCount,
+            int shockPercent,int shockCount,boolean delayShock,int snoozeCount,boolean snoozeZap,boolean snoozeLock) {
         boolean extended = hasExtendedAlarms(firmware);
         Calendar time = checkedTime(localDateTime);
         if (repeatMask != ONE_SHOT) range("weekly repeat mask", repeatMask, 1, EVERY_DAY);
         int vibe = alarmIntensity(vibrationPercent, vibrationCount, false);
         int beep = alarmIntensity(beepPercent, beepCount, false);
-        int zap = alarmIntensity(shockPercent, shockPercent == 0 ? 0 : 1, true);
+        int zap = alarmIntensity(shockPercent, shockCount, true);
         boolean v = vibrationPercent != 0, b = beepPercent != 0, z = shockPercent != 0;
         int selector;
         if (v && b && z) selector = 0x39;
@@ -254,7 +266,7 @@ public final class LegacyProtocol {
         }
         range("alarm strength", percent, 10, 100);
         if (percent % 10 != 0) throw new IllegalArgumentException("Alarm strength must be a multiple of ten percent");
-        range("alarm count", count, 1, shock ? 1 : 7);
+        range("alarm count", count, 1, 7);
         int nibble = percent == 100 ? 12 : percent / 10 + (shock ? 1 : 2);
         return (nibble << 4) | count;
     }

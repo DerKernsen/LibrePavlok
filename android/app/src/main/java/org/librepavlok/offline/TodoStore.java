@@ -19,7 +19,8 @@ final class TodoStore {
             JSONArray rows=new JSONArray(prefs.getString("items","[]"));
             for(int i=0;i<rows.length();i++) {
                 JSONObject j=rows.getJSONObject(i);
-                TodoItem t=new TodoItem(j.getString("id"),j.getString("title"),j.getLong("due"),j.getInt("reminder"),j.getInt("strength"));
+                PulsePlan pulse=new PulsePlan(j.optInt("signal",PulsePlan.SHOCK),j.getInt("strength"),j.optInt("durationMs",640),j.optInt("pulseCount",1));
+                TodoItem t=new TodoItem(j.getString("id"),j.getString("title"),j.getLong("due"),j.getInt("reminder"),pulse);
                 t.completed=j.optBoolean("completed"); t.reminded=j.optBoolean("reminded"); t.handled=j.optBoolean("handled"); t.outcome=j.optString("outcome");
                 result.add(t);
             }
@@ -33,6 +34,7 @@ final class TodoStore {
             for(TodoItem t:items) {
                 JSONObject j=new JSONObject(); j.put("id",t.id); j.put("title",t.title); j.put("due",t.dueAt);
                 j.put("reminder",t.reminderMinutes); j.put("strength",t.strength); j.put("completed",t.completed);
+                j.put("signal",t.signal); j.put("durationMs",t.durationMs); j.put("pulseCount",t.pulseCount);
                 j.put("reminded",t.reminded); j.put("handled",t.handled); j.put("outcome",t.outcome); rows.put(j);
             }
         } catch(Exception e){ return false; }

@@ -30,6 +30,7 @@ public final class MainActivity extends Activity implements BleController.Listen
     private LinearLayout page, devices, controlPanel, alarmPanel, playPanel, diagnosisPanel, todoPanel;
     private TodoPanel todos;
     private SharedBle sharedBle;
+    private PulseEditor[] remotePulses, alarmPulses, playPulses;
     private TextView status, info, logView, levelLabel, alarmTime, alarmStatus, alarmConnection;
     private TextView batteryBadge, actionStatus, quickStrength, nextAlarmText, deviceInfo, alarmLevelLabel, playLevelLabel, playStatus, playNumber;
     private SeekBar level, alarmLevel, playLevel;
@@ -211,32 +212,41 @@ public final class MainActivity extends Activity implements BleController.Listen
         heading(controlPanel,"Remote", "Wearable controls, one tap away.");
         LinearLayout quick=card(controlPanel);
         text(quick,"Quick controls",18,INK,true);
-        quickStrength=text(quick,"10% strength · one pulse",12,GREEN,true);
+        quickStrength=text(quick,"10% strength",12,GREEN,true);
         LinearLayout actions=row(quick);
-        Button vibe=sessionButton(actions,"Vibrate once",v -> pulse(false));
-        Button beep=sessionButton(actions,"Beep once",v -> pulse(true));
+        Button vibe=sessionButton(actions,"Vibrate",v -> pulse(false));
+        Button beep=sessionButton(actions,"Beep",v -> pulse(true));
         vibe.setMinHeight(dp(78)); beep.setMinHeight(dp(78)); vibe.setTextSize(15); beep.setTextSize(15);
         actionStatus=text(quick,"Connect to use controls.",12,GREEN,true);
 
         LinearLayout zap=AppUi.card(controlPanel,AppUi.PEACH);
         text(zap,"Shock",20,INK,true);
-        text(zap,"One shock, at the strength you choose.",13,MUTED,false);
+        text(zap,"A shock burst, at the strength and repeat count you choose.",13,MUTED,false);
         shockEnabled=check(zap,"Unlock shock controls");
         shockEnabled.setOnCheckedChangeListener((b,on) -> { if(!on)cancelPlay("Cancelled. Shock controls are locked."); updateControls(); });
-        shockButton=sessionButton(zap,"Send one shock…",AppUi.INK,AppUi.WHITE,v -> shock());
+        shockButton=sessionButton(zap,"Send shock burst…",AppUi.INK,AppUi.WHITE,v -> shock());
 
         LinearLayout strength=card(controlPanel); text(strength,"Remote strength",18,INK,true);
         levelLabel=text(strength,"10%",27,GREEN,true);
         level=slider(strength,preferences.getInt("remoteLevel",0));
         level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar b,int p,boolean user) { levelLabel.setText(intensity()+"%"); quickStrength.setText(intensity()+"% strength · one pulse"); shockButton.setText("Send one shock · "+intensity()+"%…"); }
+            public void onProgressChanged(SeekBar b,int p,boolean user) { levelLabel.setText(intensity()+"%"); quickStrength.setText(intensity()+"% strength"); shockButton.setText("Send shock burst · "+intensity()+"%…"); }
             public void onStartTrackingTouch(SeekBar b){} public void onStopTrackingTouch(SeekBar b){}
         });
         levelLabel.setText(intensity()+"%");
-        quickStrength.setText(intensity()+"% strength · one pulse"); shockButton.setText("Send one shock · "+intensity()+"%…");
+        quickStrength.setText(intensity()+"% strength"); shockButton.setText("Send shock burst · "+intensity()+"%…");
         LinearLayout presets=row(strength);
         for(int value:new int[]{10,50,100})button(presets,value+"%",v -> level.setProgress(value/10-1));
         text(strength,"This setting controls the remote. Your alarm has its own.",12,MUTED,false);
+
+        LinearLayout timing=card(controlPanel); text(timing,"Pulse duration & repeats",18,INK,true);
+        remotePulses=pulseEditors(timing,"remote",false);
+        Runnable updateTiming=() -> {
+            vibe.setText("Vibrate\n"+remotePulses[PulsePlan.VIBRATION].durationMs()+" ms × "+remotePulses[PulsePlan.VIBRATION].count());
+            beep.setText("Beep\n"+remotePulses[PulsePlan.BEEP].durationMs()+" ms × "+remotePulses[PulsePlan.BEEP].count());
+        };
+        for(PulseEditor editor:remotePulses)editor.onChange=updateTiming;
+        updateTiming.run();
 
         LinearLayout next=AppUi.card(controlPanel,AppUi.SOFT);
         text(next,"LAST SAVED ALARM",10,GREEN,true); nextAlarmText=text(next,"No alarm saved yet.",20,INK,true);
@@ -265,6 +275,8 @@ public final class MainActivity extends Activity implements BleController.Listen
             public void onProgressChanged(SeekBar b,int p,boolean user){ alarmLevelLabel.setText(alarmIntensity()+"%"); }
             public void onStartTrackingTouch(SeekBar b){} public void onStopTrackingTouch(SeekBar b){}
         }); alarmLevelLabel.setText(alarmIntensity()+"%");
+        alarmPulses=pulseEditors(options,"alarm",true);
+        selectPulseEditors(alarmKind,alarmPulses,new int[]{PulsePlan.VIBRATION,PulsePlan.BEEP,PulsePlan.SHOCK});
         text(options,"Shock alarms use the unlock on Remote. Beep and vibration need no extra setup.",12,MUTED,false);
         alarmConnection=text(alarmPanel,"Connect to save. You can edit the time first.",12,MUTED,false);
         alarmStatus=text(alarmPanel,lastSavedDescription(),13,GREEN,true);
@@ -291,7 +303,8 @@ public final class MainActivity extends Activity implements BleController.Listen
         text(card,"Countdown",19,INK,true);
         playNumber=text(card,"—",58,GREEN,true); playNumber.setGravity(Gravity.CENTER);
         playStatus=text(card,"Choose a signal and delay.",13,MUTED,false); playStatus.setGravity(Gravity.CENTER);
-        text(card,"Signal",12,MUTED,true); playMode=spinner(card,"One vibration","One shock");
+        text(card,"Signal",12,MUTED,true); playMode=spinner(card,"Vibration","Shock","Beep");
+        playMode.setSelection(Math.max(0,Math.min(2,preferences.getInt("playSignal",0))));
         text(card,"Strength",12,MUTED,true);
         playLevelLabel=text(card,"10%",27,GREEN,true);
         playLevel=slider(card,preferences.getInt("playLevel",0));
@@ -299,10 +312,12 @@ public final class MainActivity extends Activity implements BleController.Listen
             public void onProgressChanged(SeekBar b,int p,boolean user){ playLevelLabel.setText(playIntensity()+"%"); }
             public void onStartTrackingTouch(SeekBar b){} public void onStopTrackingTouch(SeekBar b){}
         }); playLevelLabel.setText(playIntensity()+"%");
+        playPulses=pulseEditors(card,"play",false);
+        selectPulseEditors(playMode,playPulses,new int[]{PulsePlan.VIBRATION,PulsePlan.SHOCK,PulsePlan.BEEP});
         text(card,"Delay",12,MUTED,true); playDelay=spinner(card,"3 seconds","5 seconds","8 seconds","Random: 3–8 seconds"); playDelay.setSelection(1);
         playConsent=check(card,"Wearer has agreed");
         playConsent.setOnCheckedChangeListener((b,on) -> { if(!on&&playCountdown!=null&&playCountdown.shock)cancelPlay("Countdown cancelled."); });
-        text(card,"One pulse when the countdown ends.",12,MUTED,false);
+        text(card,"Your chosen pulse or burst starts when the countdown ends.",12,MUTED,false);
         text(playPanel,"Leaving Play or disconnecting cancels the countdown.",12,MUTED,false);
     }
     private void buildDevice() {
@@ -329,12 +344,24 @@ public final class MainActivity extends Activity implements BleController.Listen
         button(report,"Show connection log ▾",v -> logView.setVisibility(logView.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
         logView=text(report,"Ready. Everything stays on this phone.",11,MUTED,false);
         logView.setTypeface(Typeface.MONOSPACE); logView.setTextIsSelectable(true); logView.setVisibility(View.GONE);
-        text(diagnosisPanel,"LibrePavlok 0.3.0 · Made for the original Shock Clock",11,MUTED,false);
+        text(diagnosisPanel,"LibrePavlok 0.3.1 · Made for the original Shock Clock",11,MUTED,false);
     }
     private CheckBox check(LinearLayout parent,String label) {
         CheckBox c=new CheckBox(this); c.setText(label); c.setTextColor(INK); c.setTextSize(13);
         c.setButtonTintList(android.content.res.ColorStateList.valueOf(GREEN)); c.setMinHeight(dp(48));
         parent.addView(c,new LinearLayout.LayoutParams(-1,-2)); return c;
+    }
+    private PulseEditor[] pulseEditors(LinearLayout parent,String prefix,boolean onboard) {
+        String[] names={"Vibration","Shock","Beep"}; PulseEditor[] result=new PulseEditor[3];
+        for(int signal=0;signal<3;signal++)result[signal]=PulseEditor.remembered(parent,names[signal]+(onboard?" alarm repeats":" timing"),signal,onboard,preferences,prefix+names[signal],onboard&&signal!=PulsePlan.SHOCK?3:1);
+        return result;
+    }
+    private void selectPulseEditors(Spinner choice,PulseEditor[] editors,int[] signals) {
+        Runnable update=() -> { int selected=signals[choice.getSelectedItemPosition()]; for(int i=0;i<editors.length;i++)editors[i].root.setVisibility(i==selected?View.VISIBLE:View.GONE); };
+        choice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(AdapterView<?> p,View v,int position,long id){ update.run(); }
+            public void onNothingSelected(AdapterView<?> p){}
+        }); update.run();
     }
     private SeekBar slider(LinearLayout parent,int progress) {
         SeekBar s=new SeekBar(this); s.setMax(9); s.setProgress(Math.max(0,Math.min(9,progress)));
@@ -356,9 +383,13 @@ public final class MainActivity extends Activity implements BleController.Listen
     private int alarmIntensity(){ return (alarmLevel.getProgress()+1)*10; }
     private void saveDraft() {
         if(preferences==null||level==null||alarmLevel==null)return;
-        preferences.edit().putInt("draftHour",hour).putInt("draftMinute",minute).putInt("draftRepeat",repeat.getSelectedItemPosition())
+        SharedPreferences.Editor draft=preferences.edit().putInt("draftHour",hour).putInt("draftMinute",minute).putInt("draftRepeat",repeat.getSelectedItemPosition())
                 .putInt("draftKind",alarmKind.getSelectedItemPosition()).putInt("draftLevel",alarmLevel.getProgress())
-                .putInt("remoteLevel",level.getProgress()).putInt("playLevel",playLevel.getProgress()).apply();
+                .putInt("remoteLevel",level.getProgress()).putInt("playLevel",playLevel.getProgress()).putInt("playSignal",playMode.getSelectedItemPosition());
+        String[] prefixes={"remote","alarm","play"},names={"Vibration","Shock","Beep"};
+        PulseEditor[][] groups={remotePulses,alarmPulses,playPulses};
+        for(int group=0;group<groups.length;group++)if(groups[group]!=null)for(int signal=0;signal<3;signal++)groups[group][signal].save(draft,prefixes[group]+names[signal]);
+        draft.apply();
     }
     private String lastSavedDescription() { return preferences.getString("lastSaved","No verified alarm saved yet."); }
     private void refreshSavedSummary() {
@@ -396,11 +427,12 @@ public final class MainActivity extends Activity implements BleController.Listen
         if(zap&&!playConsent.isChecked()){ notice("Confirm wearer agreement to start."); return; }
         int choice=playDelay.getSelectedItemPosition(); int delay=choice==0?3:choice==1?5:choice==2?8:3+new Random().nextInt(6);
         int strength=playIntensity();
-        playConfirmation=new AlertDialog.Builder(this).setTitle(zap?"One "+strength+"% shock in "+delay+" seconds?":"One buzz in "+delay+" seconds?")
-                .setMessage("The countdown stays visible. Cancel any time before it finishes. "+(zap?"One shock only, at the strength above.":"Practice mode sends one vibration at "+strength+"%."))
+        final PulsePlan pulse=playPulses[playMode.getSelectedItemPosition()].snapshot(strength);
+        playConfirmation=new AlertDialog.Builder(this).setTitle("Start burst in "+delay+" seconds?")
+                .setMessage(pulse.description()+". Cancel any time before the countdown finishes. After dispatch, the wearable runs the burst.")
                 .setNegativeButton("Not now",null).setPositiveButton("Start countdown",(d,w) -> {
                     if(!canSend())return;
-                    playCountdown=new PlayCountdown(zap,strength,delay,SystemClock.elapsedRealtime());
+                    playCountdown=new PlayCountdown(pulse,delay,SystemClock.elapsedRealtime());
                     playStatus.setText("Countdown running"); playCancel.setVisibility(View.VISIBLE);
                     updateControls(); handler.post(playTick);
                 }).show();
@@ -413,9 +445,9 @@ public final class MainActivity extends Activity implements BleController.Listen
             if(plan.take(now,ready&&sessionReady,shockEnabled.isChecked(),playConsent.isChecked(),isAlarmBusy()||stimulusInFlight)) {
                 playCountdown=null; playCancel.setVisibility(View.GONE); stimulusInFlight=true;
                 try {
-                    byte[] data=plan.shock?LegacyProtocol.shock(plan.strength,firmware):LegacyProtocol.vibration(plan.strength,1,640,640);
+                    byte[] data=plan.pulse.command(firmware);
                     playStatus.setText("Sending pulse…"); updateControls();
-                    ble.write(UUID.fromString(plan.shock?LegacyProtocol.SHOCK:LegacyProtocol.VIBRATION),data,"Play: "+(plan.shock?"shock":"vibration")+" "+plan.strength+"%");
+                    ble.write(UUID.fromString(plan.pulse.characteristic()),data,"Play: "+plan.pulse.description());
                 } catch(IllegalArgumentException e){ stimulusInFlight=false; playStatus.setText(e.getMessage()); updateControls(); }
             } else if(!plan.isPending())cancelPlay("Cancelled. Nothing sent.");
             else handler.postDelayed(this,150);
@@ -433,9 +465,9 @@ public final class MainActivity extends Activity implements BleController.Listen
         return true;
     }
     private static final class AlarmSnapshot {
-        final int hour,minute,kind,strength,repeat;
-        AlarmSnapshot(int h,int m,int k,int s,int r){ hour=h;minute=m;kind=k;strength=s;repeat=r; }
-        String summary(){ return String.format(Locale.ROOT,"%02d:%02d · %s · %s",hour,minute,kind==0?"Vibration":kind==1?"Beep":"Shock",repeat==0?"Once":"Every day"); }
+        final int hour,minute,kind,strength,repeat,pulses;
+        AlarmSnapshot(int h,int m,int k,int s,int r,int pulses){ hour=h;minute=m;kind=k;strength=s;repeat=r;this.pulses=pulses; }
+        String summary(){ return String.format(Locale.ROOT,"%02d:%02d · %s · %d pulse%s · %s",hour,minute,kind==0?"Vibration":kind==1?"Beep":"Shock",pulses,pulses==1?"":"s",repeat==0?"Once":"Every day"); }
     }
 
     private int intensity() { return (level.getProgress()+1)*10; }
@@ -468,6 +500,9 @@ public final class MainActivity extends Activity implements BleController.Listen
         if(level!=null)level.setEnabled(!isAlarmBusy()&&!stimulusInFlight&&playCountdown==null);
         if(shockButton!=null){ boolean unlocked=enabled&&shockEnabled.isChecked(); shockButton.setEnabled(unlocked); shockButton.setAlpha(unlocked?1f:0.7f); }
         if(playMode!=null){ playMode.setEnabled(playCountdown==null); playDelay.setEnabled(playCountdown==null); playLevel.setEnabled(playCountdown==null); }
+        if(remotePulses!=null)for(PulseEditor e:remotePulses)e.enabled(!isAlarmBusy()&&!stimulusInFlight&&playCountdown==null);
+        if(alarmPulses!=null)for(PulseEditor e:alarmPulses)e.enabled(!isAlarmBusy()&&playCountdown==null);
+        if(playPulses!=null)for(PulseEditor e:playPulses)e.enabled(playCountdown==null&&!stimulusInFlight);
         if(connectionAction!=null)connectionAction.setText(ready?"Device":"Connect");
         if(alarmConnection!=null)alarmConnection.setText(isAlarmBusy()?"Saving. Keep your wearable close…":ready&&sessionReady?"Connected. Ready to save your wake-up.":ready?"Getting the wearable ready…":"Connect to save. You can edit the time first.");
     }
@@ -508,20 +543,20 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private void pulse(boolean beep) {
         if(!canSend())return;
-        try { byte[] data = beep ? LegacyProtocol.beep(intensity(),1,640,640) : LegacyProtocol.vibration(intensity(),1,640,640);
-            stimulusInFlight=true; actionStatus.setText("Sending one "+(beep?"beep":"buzz")+" at "+intensity()+"%…"); updateControls();
-            ble.write(UUID.fromString(beep?LegacyProtocol.BEEP:LegacyProtocol.VIBRATION),data,beep?"Beep once":"Vibrate once"); }
+        try { PulsePlan pulse=remotePulses[beep?PulsePlan.BEEP:PulsePlan.VIBRATION].snapshot(intensity()); byte[] data=pulse.command(firmware);
+            saveDraft(); stimulusInFlight=true; actionStatus.setText("Sending "+pulse.description()+"…"); updateControls();
+            ble.write(UUID.fromString(pulse.characteristic()),data,"Remote: "+pulse.description()); }
         catch(IllegalArgumentException e) { notice(e.getMessage()); }
     }
     private void shock() {
         if(!canSend())return;
         if(shockConfirmation!=null&&shockConfirmation.isShowing())return;
         if(!shockEnabled.isChecked()) { notice("Enable manual shock controls first."); return; }
-        final int strength = intensity(); final byte[] data;
-        try { data=LegacyProtocol.shock(strength,firmware); } catch(IllegalArgumentException e) { notice(e.getMessage()); return; }
-        shockConfirmation=new AlertDialog.Builder(this).setTitle("One shock at "+strength+"%?").setMessage("Sends one shock immediately.")
-                .setNegativeButton("Not now",null).setPositiveButton("Send one shock",(d,w) -> {
-                    if(canSend()&&shockEnabled.isChecked()) { stimulusInFlight=true; actionStatus.setText("Sending one shock at "+strength+"%…"); updateControls(); ble.write(UUID.fromString(LegacyProtocol.SHOCK),data,"Shock once "+strength+"%"); }
+        final PulsePlan pulse=remotePulses[PulsePlan.SHOCK].snapshot(intensity()); final byte[] data;
+        try { data=pulse.command(firmware); } catch(IllegalArgumentException e) { notice(e.getMessage()); return; }
+        shockConfirmation=new AlertDialog.Builder(this).setTitle("Send shock burst?").setMessage(pulse.description()+". Starts immediately and runs on the wearable.")
+                .setNegativeButton("Not now",null).setPositiveButton("Send shock burst",(d,w) -> {
+                    if(canSend()&&shockEnabled.isChecked()) { saveDraft(); stimulusInFlight=true; actionStatus.setText("Sending "+pulse.description()+"…"); updateControls(); ble.write(UUID.fromString(LegacyProtocol.SHOCK),data,"Remote: "+pulse.description()); }
                 }).show();
     }
     private void writeRtc(byte[] bytes,String label) {
@@ -537,18 +572,18 @@ public final class MainActivity extends Activity implements BleController.Listen
         if(repeat.getSelectedItemPosition()==0&&alarm.getTimeInMillis()<=System.currentTimeMillis()) alarm.add(Calendar.DAY_OF_MONTH,1);
         final int repeatMask = repeat.getSelectedItemPosition()==0 ? 0x80 : 0x7f;
         final int kind = alarmKind.getSelectedItemPosition();
+        final PulsePlan pulse=alarmPulses[kind==2?PulsePlan.SHOCK:kind==1?PulsePlan.BEEP:PulsePlan.VIBRATION].snapshot(alarmIntensity());
         if(kind==2&&!shockEnabled.isChecked()) { notice("Unlock shock controls on Remote first."); return; }
         final byte[] record;
         try {
-            if(kind==2) record=LegacyProtocol.alarm(firmware,repeatMask,alarm,0,0,0,0,alarmIntensity(),false,10,false,false);
-            else record=kind==1 ? LegacyProtocol.beepAlarm(firmware,repeatMask,alarm,alarmIntensity(),3) : LegacyProtocol.vibrationAlarm(firmware,repeatMask,alarm,alarmIntensity(),3);
+            record=pulse.alarm(firmware,repeatMask,alarm);
         }
         catch(IllegalArgumentException e) { notice(e.getMessage()); return; }
         String time = String.format(Locale.ROOT,"%02d:%02d",hour,minute);
         String signal=kind==2?"shock":kind==1?"beep":"vibration";
-        final AlarmSnapshot snapshot=new AlarmSnapshot(hour,minute,kind,alarmIntensity(),repeat.getSelectedItemPosition());
+        final AlarmSnapshot snapshot=new AlarmSnapshot(hour,minute,kind,pulse.strength,repeat.getSelectedItemPosition(),pulse.count);
         alarmConfirmation=new AlertDialog.Builder(this).setTitle("Save alarm for "+time+"?")
-                .setMessage(signal.substring(0,1).toUpperCase(Locale.ROOT)+signal.substring(1)+" at "+alarmIntensity()+"%, "+(repeatMask==0x80?"once":"every day")+". Replaces the alarms currently on your wearable.")
+                .setMessage(pulse.count+" "+signal+" pulse"+(pulse.count==1?"":"s")+" per alarm cycle at "+pulse.strength+"%, "+(repeatMask==0x80?"once":"every day")+". Pulse width and cadence are controlled by the wearable. Replaces the alarms currently on your wearable.")
                 .setNegativeButton("Keep editing",null).setPositiveButton("Replace and save",(d,w) -> { if(canSend()){ savingSnapshot=snapshot; saveDraft(); saveAlarm(record); } }).show();
     }
     private void saveAlarm(byte[] record) {
@@ -577,7 +612,7 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     private void notice(String message) { new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show(); }
     private void exportReport() {
-        exportText="LibrePavlok 0.3.0 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
+        exportText="LibrePavlok 0.3.1 local report\n"+new Date()+"\n\n"+ble.diagnosticReport()+"\n\nSession log\n"+logs;
         Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT); i.setType("text/plain"); i.addCategory(Intent.CATEGORY_OPENABLE); i.putExtra(Intent.EXTRA_TITLE,"librepavlok-report.txt"); startActivityForResult(i,102);
     }
     @Override protected void onActivityResult(int r,int result,Intent data) {
@@ -662,11 +697,11 @@ public final class MainActivity extends Activity implements BleController.Listen
     }
     @Override public void onWriteComplete(UUID uuid,String label,boolean success) {
         if(label.startsWith("To-do:")){ updateControls(); if(activeTab==4)todos.refresh(); return; }
-        boolean stimulus=label.equals("Vibrate once")||label.equals("Beep once")||label.startsWith("Shock once")||label.startsWith("Play:");
+        boolean stimulus=label.startsWith("Remote:")||label.startsWith("Play:");
         if(stimulus) {
             stimulusInFlight=false;
-            actionStatus.setText(success?"Pulse sent.":"Could not send. Reconnect and try again.");
-            if(label.startsWith("Play:")){ playNumber.setText("—"); playStatus.setText(success?"Pulse sent.":"Could not send. Check the connection."); }
+            actionStatus.setText(success?"Burst command sent.":"Could not send. Reconnect and try again.");
+            if(label.startsWith("Play:")){ playNumber.setText("—"); playStatus.setText(success?"Burst command sent.":"Could not send. Check the connection."); }
             updateControls();
         }
         if(label.equals("Local handshake")) { sessionReady=success; if(success) status.setText("Connected"); updateControls(); updateDeviceSummary(); }
